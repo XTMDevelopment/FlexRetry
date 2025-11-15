@@ -4,6 +4,7 @@ import id.xtramile.flexretry.backoff.BackoffStrategy;
 import id.xtramile.flexretry.budget.RetryBudget;
 import id.xtramile.flexretry.metrics.RetryMetrics;
 import id.xtramile.flexretry.policy.*;
+import id.xtramile.flexretry.stop.FixedAttemptsStop;
 import id.xtramile.flexretry.stop.StopStrategy;
 import id.xtramile.flexretry.time.Clock;
 
@@ -32,7 +33,7 @@ public final class Retry<T> {
         private final Map<String, Object> tags = new HashMap<>();
 
         // Timing & stop conditions
-        private StopStrategy stop = StopStrategy.maxAttempts(3);
+        private StopStrategy stop = new FixedAttemptsStop(3);
         private BackoffStrategy backoff = BackoffStrategy.fixed(Duration.ZERO);
         private Duration attemptTimeout = null;
         private ExecutorService attemptExecutor = null;
@@ -67,7 +68,7 @@ public final class Retry<T> {
         }
 
         public Builder<T> maxAttempts(int attempts) {
-            this.stop = StopStrategy.maxAttempts(attempts);
+            this.stop = new FixedAttemptsStop(attempts);
             return this;
         }
 
