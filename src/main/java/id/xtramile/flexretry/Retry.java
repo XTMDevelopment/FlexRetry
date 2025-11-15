@@ -9,6 +9,7 @@ import id.xtramile.flexretry.config.RetryTemplate;
 import id.xtramile.flexretry.http.RetryAfterExtractor;
 import id.xtramile.flexretry.metrics.RetryMetrics;
 import id.xtramile.flexretry.policy.*;
+import id.xtramile.flexretry.sf.SingleFlight;
 import id.xtramile.flexretry.stop.FixedAttemptsStop;
 import id.xtramile.flexretry.stop.StopStrategy;
 import id.xtramile.flexretry.time.Clock;
@@ -64,6 +65,9 @@ public final class Retry<T> {
         private RetrySwitch retrySwitch = null;
         private MutableTuning tuning = null;
         private Bulkhead bulkhead = null;
+
+        private Function<RetryContext<?>, String> coalesceBy = null;
+        private SingleFlight<T> singleFlight = null;
 
         public Builder<T> name(String name) {
             this.name = Objects.requireNonNull(name);
@@ -224,6 +228,16 @@ public final class Retry<T> {
             return this;
         }
 
+        public Builder<T> coalesceBy(Function<RetryContext<?>, String> coalesceBy) {
+            this.coalesceBy = coalesceBy;
+            return this;
+        }
+
+        public Builder<T> singleFlight(SingleFlight<T> singleFlight) {
+            this.singleFlight = singleFlight;
+            return this;
+        }
+
         public Builder<T> execute(Supplier<T> supplier) {
             Objects.requireNonNull(supplier, "supplier");
             this.task = supplier::get;
@@ -276,7 +290,8 @@ public final class Retry<T> {
                     sleeper, clock, budget, metrics,
                     attemptTimeout, attemptExecutor,
                     task, fallback, backoffRouter, retryAfterExtractor,
-                    retrySwitch, tuning, bulkhead
+                    retrySwitch, tuning, bulkhead,
+                    coalesceBy, singleFlight
             );
         }
     }

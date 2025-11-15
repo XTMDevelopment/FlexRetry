@@ -7,6 +7,7 @@ import id.xtramile.flexretry.bulkhead.Bulkhead;
 import id.xtramile.flexretry.http.RetryAfterExtractor;
 import id.xtramile.flexretry.metrics.RetryMetrics;
 import id.xtramile.flexretry.policy.RetryPolicy;
+import id.xtramile.flexretry.sf.SingleFlight;
 import id.xtramile.flexretry.stop.CompositeStop;
 import id.xtramile.flexretry.stop.FixedAttemptsStop;
 import id.xtramile.flexretry.stop.MaxElapsedStop;
@@ -51,6 +52,9 @@ public final class RetryExecutor<T> {
     private final MutableTuning tuning;
     private final Bulkhead bulkhead;
 
+    private final Function<RetryContext<?>, String> coalesceBy;
+    private final SingleFlight<T> singleFlight;
+
     public RetryExecutor(
             String name,
             String id,
@@ -71,7 +75,9 @@ public final class RetryExecutor<T> {
             RetryAfterExtractor<T> retryAfterExtractor,
             RetrySwitch retrySwitch,
             MutableTuning tuning,
-            Bulkhead bulkhead
+            Bulkhead bulkhead,
+            Function<RetryContext<?>, String> coalesceBy,
+            SingleFlight<T> singleFlight
     ) {
         this.name = Objects.requireNonNull(name, "name");
         this.id = Objects.requireNonNull(id, "id");
@@ -95,6 +101,9 @@ public final class RetryExecutor<T> {
         this.retrySwitch = retrySwitch;
         this.tuning = tuning;
         this.bulkhead = bulkhead;
+
+        this.coalesceBy = coalesceBy;
+        this.singleFlight = singleFlight;
     }
 
     public T run() {
@@ -141,7 +150,15 @@ public final class RetryExecutor<T> {
                 }
 
                 try {
-                    T result = executeAttempt();
+                    T result;
+
+                    if (coalesceBy != null && singleFlight != null) {
+                        String key = coalesceBy.apply(ctxBefore);
+                        result = singleFlight.execute(key, this::executeAttempt);
+                    } else {
+                        result = executeAttempt();
+                    }
+
                     lastResult = result;
                     lastError = null;
 
