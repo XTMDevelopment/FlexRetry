@@ -5,6 +5,8 @@ import id.xtramile.flexretry.backoff.BackoffStrategy;
 import id.xtramile.flexretry.budget.RetryBudget;
 import id.xtramile.flexretry.bulkhead.Bulkhead;
 import id.xtramile.flexretry.cache.ResultCache;
+import id.xtramile.flexretry.events.RetryEvent;
+import id.xtramile.flexretry.events.RetryEventBus;
 import id.xtramile.flexretry.http.RetryAfterExtractor;
 import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
 import id.xtramile.flexretry.metrics.RetryMetrics;
@@ -59,6 +61,8 @@ public final class RetryExecutor<T> {
     private final Function<RetryContext<?>, String> cacheKeyFn;
     private final Duration cacheTtl;
 
+    private final RetryEventBus<T> eventBus;
+
     public RetryExecutor(
             String name,
             String id,
@@ -85,7 +89,8 @@ public final class RetryExecutor<T> {
             AttemptLifecycle<T> lifecycle,
             ResultCache<String, T> cache,
             Function<RetryContext<?>, String> cacheKeyFn,
-            Duration cacheTtl
+            Duration cacheTtl,
+            RetryEventBus<T> eventBus
     ) {
         this.name = Objects.requireNonNull(name, "name");
         this.id = Objects.requireNonNull(id, "id");
@@ -117,6 +122,8 @@ public final class RetryExecutor<T> {
         this.cache = cache;
         this.cacheKeyFn = cacheKeyFn;
         this.cacheTtl = cacheTtl;
+
+        this.eventBus = eventBus;
     }
 
     public T run() {
@@ -147,6 +154,10 @@ public final class RetryExecutor<T> {
                     lifecycle.beforeAttempt(ctxBefore);
                 }
 
+                if (eventBus != null) {
+                    eventBus.publish(new RetryEvent.AttemptStarted<>(ctxBefore));
+                }
+
                 if (cache != null && cacheKeyFn != null) {
                     String key = cacheKeyFn.apply(ctxBefore);
                     Optional<T> hit = cache.get(key);
@@ -171,9 +182,14 @@ public final class RetryExecutor<T> {
                     listeners.onFailure.accept(lastError, ctxFail);
                     metrics.exhausted(name, finalAttempt, lastError);
 
-                    if (fallback != null) {
+                    if (fallback != null && eventBus != null) {
                         listeners.onRecover.accept(ctxFail);
+                        eventBus.publish(new RetryEvent.Recovered<>(ctxFail, fallback.apply(lastError)));
                         return fallback.apply(lastError);
+                    }
+
+                    if (eventBus != null) {
+                        eventBus.publish(new RetryEvent.Exhausted<>(ctxFail, lastError));
                     }
 
                     throw new RetryException("Retry exhausted at attempt " + finalAttempt, lastError, finalAttempt);
@@ -201,9 +217,14 @@ public final class RetryExecutor<T> {
                             listeners.onFailure.accept(null, ctxFail);
                             metrics.exhausted(name, finalAttempt, null);
 
-                            if (fallback != null) {
+                            if (fallback != null && eventBus != null) {
                                 listeners.onRecover.accept(ctxFail);
+                                eventBus.publish(new RetryEvent.Recovered<>(ctxFail, fallback.apply(null)));
                                 return fallback.apply(null);
+                            }
+
+                            if (eventBus != null) {
+                                eventBus.publish(new RetryEvent.Exhausted<>(ctxFail, null));
                             }
 
                             throw new RetryException("Retry denied by budget at attempt " + attempt, null, attempt);
@@ -228,6 +249,10 @@ public final class RetryExecutor<T> {
                     RetryContext<T> ctxSuccess = new RetryContext<>(id, attempt, attempt, result, null, Duration.ZERO, tags);
                     listeners.onSuccess.accept(result, ctxSuccess);
                     metrics.attemptSucceeded(name, attempt);
+
+                    if (eventBus != null) {
+                        eventBus.publish(new RetryEvent.AttemptSucceeded<>(ctxSuccess, result));
+                    }
 
                     if (bulkhead != null) {
                         bulkhead.release();
@@ -261,9 +286,14 @@ public final class RetryExecutor<T> {
                             listeners.onFailure.accept(lastError, ctxFail);
                             metrics.exhausted(name, finalAttempt, lastError);
 
-                            if (fallback != null) {
+                            if (fallback != null && eventBus != null) {
                                 listeners.onRecover.accept(ctxFail);
+                                eventBus.publish(new RetryEvent.Recovered<>(ctxFail, fallback.apply(lastError)));
                                 return fallback.apply(lastError);
+                            }
+
+                            if (eventBus != null) {
+                                eventBus.publish(new RetryEvent.AttemptFailed<>(ctxBefore, lastError));
                             }
 
                             throw new RetryException("Retry denied by budget at attempt " + attempt, lastError, attempt);
@@ -289,8 +319,13 @@ public final class RetryExecutor<T> {
                     listeners.onFailure.accept(lastError, ctxFail);
                     metrics.attemptFailed(name, finalAttempt, lastError);
 
-                    if (fallback != null) {
+                    if (eventBus != null) {
+                        eventBus.publish(new RetryEvent.AttemptFailed<>(ctxFail, lastError));
+                    }
+
+                    if (fallback != null && eventBus != null) {
                         listeners.onRecover.accept(ctxFail);
+                        eventBus.publish(new RetryEvent.Recovered<>(ctxFail, fallback.apply(lastError)));
                         return fallback.apply(lastError);
                     }
 
@@ -315,8 +350,13 @@ public final class RetryExecutor<T> {
             listeners.onFailure.accept(null, ctxFail);
             metrics.attemptFailed(name, finalAttempt, ie);
 
-            if (fallback != null) {
+            if (eventBus != null) {
+                eventBus.publish(new RetryEvent.AttemptFailed<>(ctxFail, null));
+            }
+
+            if (fallback != null && eventBus != null) {
                 listeners.onRecover.accept(ctxFail);
+                eventBus.publish(new RetryEvent.Recovered<>(ctxFail, fallback.apply(null)));
                 return fallback.apply(ie);
             }
 

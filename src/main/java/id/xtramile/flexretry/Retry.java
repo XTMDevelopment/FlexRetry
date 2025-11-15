@@ -7,6 +7,7 @@ import id.xtramile.flexretry.bulkhead.Bulkhead;
 import id.xtramile.flexretry.cache.ResultCache;
 import id.xtramile.flexretry.config.RetryConfig;
 import id.xtramile.flexretry.config.RetryTemplate;
+import id.xtramile.flexretry.events.RetryEventBus;
 import id.xtramile.flexretry.http.RetryAfterExtractor;
 import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
 import id.xtramile.flexretry.metrics.RetryMetrics;
@@ -75,6 +76,8 @@ public final class Retry<T> {
         private ResultCache<String, T> cache = null;
         private Function<RetryContext<?>, String> cacheKeyFn = null;
         private Duration cacheTtl = null;
+
+        private RetryEventBus<T> eventBus = null;
 
         public Builder<T> name(String name) {
             this.name = Objects.requireNonNull(name);
@@ -257,6 +260,11 @@ public final class Retry<T> {
             return this;
         }
 
+        public Builder<T> eventBus(RetryEventBus<T> bus) {
+            this.eventBus = bus;
+            return this;
+        }
+
         public Builder<T> execute(Supplier<T> supplier) {
             Objects.requireNonNull(supplier, "supplier");
             this.task = supplier::get;
@@ -281,7 +289,12 @@ public final class Retry<T> {
                     name, id, Map.copyOf(tags),
                     stop, backoff, buildPolicy(), listeners,
                     sleeper, clock, budget, metrics,
-                    attemptTimeout, attemptExecutor, fallback
+                    attemptTimeout, attemptExecutor,
+                    fallback, backoffRouter, retryAfterExtractor,
+                    retrySwitch, tuning, bulkhead,
+                    coalesceBy, singleFlight, lifecycle,
+                    cache, cacheKeyFn, cacheTtl,
+                    eventBus
             );
         }
 
@@ -311,7 +324,8 @@ public final class Retry<T> {
                     task, fallback, backoffRouter, retryAfterExtractor,
                     retrySwitch, tuning, bulkhead,
                     coalesceBy, singleFlight, lifecycle,
-                    cache, cacheKeyFn, cacheTtl
+                    cache, cacheKeyFn, cacheTtl,
+                    eventBus
             );
         }
     }

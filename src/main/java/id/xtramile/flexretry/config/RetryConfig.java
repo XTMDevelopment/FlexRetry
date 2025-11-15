@@ -1,14 +1,24 @@
 package id.xtramile.flexretry.config;
 
+import id.xtramile.flexretry.RetryContext;
 import id.xtramile.flexretry.RetryExecutor;
 import id.xtramile.flexretry.RetryListeners;
 import id.xtramile.flexretry.Sleeper;
+import id.xtramile.flexretry.backoff.BackoffRouter;
 import id.xtramile.flexretry.backoff.BackoffStrategy;
 import id.xtramile.flexretry.budget.RetryBudget;
+import id.xtramile.flexretry.bulkhead.Bulkhead;
+import id.xtramile.flexretry.cache.ResultCache;
+import id.xtramile.flexretry.events.RetryEventBus;
+import id.xtramile.flexretry.http.RetryAfterExtractor;
+import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
 import id.xtramile.flexretry.metrics.RetryMetrics;
 import id.xtramile.flexretry.policy.RetryPolicy;
+import id.xtramile.flexretry.sf.SingleFlight;
 import id.xtramile.flexretry.stop.StopStrategy;
 import id.xtramile.flexretry.time.Clock;
+import id.xtramile.flexretry.tuning.MutableTuning;
+import id.xtramile.flexretry.tuning.RetrySwitch;
 
 import java.time.Duration;
 import java.util.Map;
@@ -34,6 +44,18 @@ public final class RetryConfig<T> {
     public final Duration attemptTimeout;
     public final ExecutorService attemptExecutor;
     public final Function<Throwable, T> fallback;
+    public final BackoffRouter backoffRouter;
+    public final RetryAfterExtractor<T> retryAfterExtractor;
+    public final RetrySwitch retrySwitch;
+    public final MutableTuning tuning;
+    public final Bulkhead bulkhead;
+    public final Function<RetryContext<?>, String> coalesceBy;
+    public final SingleFlight<T> singleFlight;
+    public final AttemptLifecycle<T> lifecycle;
+    public final ResultCache<String, T> cache;
+    public final Function<RetryContext<?>, String> cacheKeyFn;
+    public final Duration cacheTtl;
+    public final RetryEventBus<T> eventBus;
 
     public RetryConfig(
             String name,
@@ -49,7 +71,19 @@ public final class RetryConfig<T> {
             RetryMetrics metrics,
             Duration attemptTimeout,
             ExecutorService attemptExecutor,
-            Function<Throwable, T> fallback
+            Function<Throwable, T> fallback,
+            BackoffRouter backoffRouter,
+            RetryAfterExtractor<T> retryAfterExtractor,
+            RetrySwitch retrySwitch,
+            MutableTuning tuning,
+            Bulkhead bulkhead,
+            Function<RetryContext<?>, String> coalesceBy,
+            SingleFlight<T> singleFlight,
+            AttemptLifecycle<T> lifecycle,
+            ResultCache<String, T> cache,
+            Function<RetryContext<?>, String> cacheKeyFn,
+            Duration cacheTtl,
+            RetryEventBus<T> eventBus
     ) {
         this.name = Objects.requireNonNull(name);
         this.id = Objects.requireNonNull(id);
@@ -65,6 +99,18 @@ public final class RetryConfig<T> {
         this.attemptTimeout = attemptTimeout;
         this.attemptExecutor = attemptExecutor;
         this.fallback = fallback;
+        this.backoffRouter = backoffRouter;
+        this.retryAfterExtractor = retryAfterExtractor;
+        this.retrySwitch = retrySwitch;
+        this.tuning = tuning;
+        this.bulkhead = bulkhead;
+        this.coalesceBy = coalesceBy;
+        this.singleFlight = singleFlight;
+        this.lifecycle = lifecycle;
+        this.cache = cache;
+        this.cacheKeyFn = cacheKeyFn;
+        this.cacheTtl = cacheTtl;
+        this.eventBus = eventBus;
     }
 
     public T run(Callable<T> task) {
@@ -73,7 +119,11 @@ public final class RetryConfig<T> {
                 stop, backoff, policy, listeners,
                 sleeper, clock, budget, metrics,
                 attemptTimeout, attemptExecutor,
-                task, fallback
+                task, fallback, backoffRouter, retryAfterExtractor,
+                retrySwitch, tuning, bulkhead,
+                coalesceBy, singleFlight, lifecycle,
+                cache, cacheKeyFn, cacheTtl,
+                eventBus
         );
 
         return executor.run();
@@ -85,7 +135,11 @@ public final class RetryConfig<T> {
                 stop, backoff, policy, listeners,
                 sleeper, clock, budget, metrics,
                 attemptTimeout, attemptExecutor,
-                task, fallback
+                task, fallback, backoffRouter, retryAfterExtractor,
+                retrySwitch, tuning, bulkhead,
+                coalesceBy, singleFlight, lifecycle,
+                cache, cacheKeyFn, cacheTtl,
+                eventBus
         );
 
         return CompletableFuture.supplyAsync(exec::run, executor);
