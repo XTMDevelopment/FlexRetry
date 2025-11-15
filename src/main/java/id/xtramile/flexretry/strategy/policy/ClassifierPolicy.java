@@ -3,16 +3,6 @@ package id.xtramile.flexretry.strategy.policy;
 import java.util.Objects;
 
 public final class ClassifierPolicy<T> implements RetryPolicy<T> {
-    public enum Decision {
-        SUCCESS,
-        RETRY,
-        FAIL
-    }
-
-    public interface ResultClassifier<T> {
-        Decision decide(T result);
-    }
-
     private final ResultClassifier<T> classifier;
 
     public ClassifierPolicy(ResultClassifier<T> classifier) {
@@ -30,5 +20,15 @@ public final class ClassifierPolicy<T> implements RetryPolicy<T> {
         }
 
         return classifier.decide(result) == Decision.RETRY;
+    }
+
+    public enum Decision {
+        SUCCESS,
+        RETRY,
+        FAIL
+    }
+
+    public interface ResultClassifier<T> {
+        Decision decide(T result);
     }
 }

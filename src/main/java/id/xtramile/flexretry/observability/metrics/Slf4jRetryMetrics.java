@@ -5,13 +5,6 @@ package id.xtramile.flexretry.observability.metrics;
  * Replace with a real adapter in your app if you use SLF4J/Micrometer
  */
 public final class Slf4jRetryMetrics implements RetryMetrics {
-    public interface Logger {
-        void debug(String message);
-        void info(String message);
-        void warn(String message);
-        void error(String message, Throwable t);
-    }
-
     private final Logger log;
 
     public Slf4jRetryMetrics(Logger log) {
@@ -36,5 +29,15 @@ public final class Slf4jRetryMetrics implements RetryMetrics {
     @Override
     public void exhausted(String name, int attempts, Throwable lastError) {
         log.error(name + " exhausted after " + attempts + " attempts", lastError);
+    }
+
+    public interface Logger {
+        void debug(String message);
+
+        void info(String message);
+
+        void warn(String message);
+
+        void error(String message, Throwable t);
     }
 }

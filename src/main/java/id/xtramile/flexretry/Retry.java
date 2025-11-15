@@ -1,28 +1,27 @@
 package id.xtramile.flexretry;
 
-import id.xtramile.flexretry.strategy.backoff.BackoffRouter;
-import id.xtramile.flexretry.strategy.backoff.BackoffStrategy;
+import id.xtramile.flexretry.config.RetryConfig;
+import id.xtramile.flexretry.config.RetryTemplate;
 import id.xtramile.flexretry.control.budget.RetryBudget;
 import id.xtramile.flexretry.control.bulkhead.Bulkhead;
 import id.xtramile.flexretry.control.cache.ResultCache;
-import id.xtramile.flexretry.config.RetryConfig;
-import id.xtramile.flexretry.config.RetryTemplate;
-import id.xtramile.flexretry.observability.events.RetryEventBus;
 import id.xtramile.flexretry.control.health.HealthProbe;
-import id.xtramile.flexretry.integrations.http.RetryAfterExtractor;
-import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
-import id.xtramile.flexretry.observability.metrics.RetryMetrics;
 import id.xtramile.flexretry.control.sf.SingleFlight;
-import id.xtramile.flexretry.strategy.stop.FixedAttemptsStop;
-import id.xtramile.flexretry.strategy.stop.StopStrategy;
-import id.xtramile.flexretry.strategy.policy.*;
-import id.xtramile.flexretry.support.time.Clock;
-import id.xtramile.flexretry.strategy.timeout.AttemptTimeoutStrategy;
-import id.xtramile.flexretry.observability.trace.TraceContext;
 import id.xtramile.flexretry.control.tuning.DynamicTuning;
 import id.xtramile.flexretry.control.tuning.MutableTuning;
 import id.xtramile.flexretry.control.tuning.RetrySwitch;
-import id.xtramile.flexretry.strategy.policy.RetryWindow;
+import id.xtramile.flexretry.integrations.http.RetryAfterExtractor;
+import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
+import id.xtramile.flexretry.observability.events.RetryEventBus;
+import id.xtramile.flexretry.observability.metrics.RetryMetrics;
+import id.xtramile.flexretry.observability.trace.TraceContext;
+import id.xtramile.flexretry.strategy.backoff.BackoffRouter;
+import id.xtramile.flexretry.strategy.backoff.BackoffStrategy;
+import id.xtramile.flexretry.strategy.policy.*;
+import id.xtramile.flexretry.strategy.stop.FixedAttemptsStop;
+import id.xtramile.flexretry.strategy.stop.StopStrategy;
+import id.xtramile.flexretry.strategy.timeout.AttemptTimeoutStrategy;
+import id.xtramile.flexretry.support.time.Clock;
 
 import java.time.Duration;
 import java.util.*;
@@ -36,7 +35,8 @@ import java.util.function.*;
  * Public facade with a fluent Builder
  */
 public final class Retry<T> {
-    private Retry() {}
+    private Retry() {
+    }
 
     public static <T> Builder<T> newBuilder() {
         return new Builder<>();
@@ -48,11 +48,14 @@ public final class Retry<T> {
 
     public static final class Builder<T> {
 
+        private final Map<String, Object> tags = new HashMap<>();
+        // ---------- Policies ----------
+        private final List<RetryPolicy<T>> policies = new ArrayList<>();
+        // ---------- Infra ----------
+        private final RetryListeners<T> listeners = new RetryListeners<>();
         // ---------- Identity / tags ----------
         private String name = "retry";
         private String id = UUID.randomUUID().toString();
-        private final Map<String, Object> tags = new HashMap<>();
-
         // ---------- Stop / timing ----------
         private StopStrategy stop = new FixedAttemptsStop(3);
         private BackoffStrategy backoff = BackoffStrategy.fixed(Duration.ZERO);
@@ -60,12 +63,6 @@ public final class Retry<T> {
         private AttemptTimeoutStrategy attemptTimeouts = null;
         private Duration attemptTimeout = null;
         private ExecutorService attemptExecutor = null;
-
-        // ---------- Policies ----------
-        private final List<RetryPolicy<T>> policies = new ArrayList<>();
-
-        // ---------- Infra ----------
-        private final RetryListeners<T> listeners = new RetryListeners<>();
         private Sleeper sleeper = Sleeper.system();
         private Clock clock = Clock.system();
         private RetryBudget budget = RetryBudget.unlimited();

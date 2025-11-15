@@ -22,6 +22,10 @@ public final class ExponentialBackoff implements BackoffStrategy {
         this.multiplier = multiplier;
     }
 
+    public static ExponentialBackoff ofMillis(long initialMillis, double multiplier) {
+        return new ExponentialBackoff(Duration.ofMillis(initialMillis), multiplier);
+    }
+
     @Override
     public Duration delayForAttempt(int attempt) {
         if (attempt <= 1) {
@@ -36,9 +40,5 @@ public final class ExponentialBackoff implements BackoffStrategy {
         }
 
         return Duration.ofMillis(ms);
-    }
-
-    public static ExponentialBackoff ofMillis(long initialMillis, double multiplier) {
-        return new ExponentialBackoff(Duration.ofMillis(initialMillis), multiplier);
     }
 }

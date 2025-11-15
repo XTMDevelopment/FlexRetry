@@ -10,11 +10,6 @@ public final class ExceptionPredicatePolicy<T> implements RetryPolicy<T> {
         this.predicate = Objects.requireNonNull(predicate, "predicate");
     }
 
-    @Override
-    public boolean shouldRetry(T result, Throwable error, int attempt, int maxAttempts) {
-        return error != null && attempt < maxAttempts && predicate.test(error);
-    }
-
     public static Predicate<Throwable> byCause(Class<? extends Throwable> type) {
         return e -> {
             for (Throwable t = e; t != null; t = t.getCause()) {
@@ -25,5 +20,10 @@ public final class ExceptionPredicatePolicy<T> implements RetryPolicy<T> {
 
             return false;
         };
+    }
+
+    @Override
+    public boolean shouldRetry(T result, Throwable error, int attempt, int maxAttempts) {
+        return error != null && attempt < maxAttempts && predicate.test(error);
     }
 }

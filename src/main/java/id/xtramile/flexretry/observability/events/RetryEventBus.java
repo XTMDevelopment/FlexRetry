@@ -16,7 +16,8 @@ public final class RetryEventBus<T> {
             try {
                 consumer.accept(event);
 
-            } catch (Throwable ignore) {}
+            } catch (Throwable ignore) {
+            }
         }
     }
 }

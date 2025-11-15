@@ -1,7 +1,8 @@
 package id.xtramile.flexretry.strategy.policy;
 
 public final class Policies {
-    private Policies() {}
+    private Policies() {
+    }
 
     @SafeVarargs
     public static <T> RetryPolicy<T> or(RetryPolicy<T>... policies) {

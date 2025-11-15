@@ -16,12 +16,12 @@ public final class FixedBackoff implements BackoffStrategy {
         this.delay = delay;
     }
 
+    public static FixedBackoff ofMillis(long millis) {
+        return new FixedBackoff(Duration.ofMillis(Math.max(0L, millis)));
+    }
+
     @Override
     public Duration delayForAttempt(int attempt) {
         return delay;
-    }
-
-    public static FixedBackoff ofMillis(long millis) {
-        return new FixedBackoff(Duration.ofMillis(Math.max(0L, millis)));
     }
 }

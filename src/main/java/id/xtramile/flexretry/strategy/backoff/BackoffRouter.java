@@ -7,16 +7,6 @@ import java.util.Objects;
 import java.util.function.Predicate;
 
 public final class BackoffRouter {
-    public static final class Route {
-        final Predicate<Throwable> predicate;
-        final BackoffStrategy backoff;
-
-        Route(Predicate<Throwable> predicate, BackoffStrategy backoff) {
-            this.predicate = predicate;
-            this.backoff = backoff;
-        }
-    }
-
     private final List<Route> routes = new ArrayList<>();
     private BackoffStrategy defaultBackoff = attempt -> Duration.ZERO;
 
@@ -40,5 +30,15 @@ public final class BackoffRouter {
         }
 
         return defaultBackoff;
+    }
+
+    public static final class Route {
+        final Predicate<Throwable> predicate;
+        final BackoffStrategy backoff;
+
+        Route(Predicate<Throwable> predicate, BackoffStrategy backoff) {
+            this.predicate = predicate;
+            this.backoff = backoff;
+        }
     }
 }

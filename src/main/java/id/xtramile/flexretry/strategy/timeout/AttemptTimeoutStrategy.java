@@ -3,8 +3,6 @@ package id.xtramile.flexretry.strategy.timeout;
 import java.time.Duration;
 
 public interface AttemptTimeoutStrategy {
-    Duration timeoutForAttempt(int attempt);
-
     static AttemptTimeoutStrategy fixed(Duration duration) {
         return attempt -> duration;
     }
@@ -17,4 +15,6 @@ public interface AttemptTimeoutStrategy {
             return duration.compareTo(cap) > 0 ? cap : duration;
         };
     }
+
+    Duration timeoutForAttempt(int attempt);
 }

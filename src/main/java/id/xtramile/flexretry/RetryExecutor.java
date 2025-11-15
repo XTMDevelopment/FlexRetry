@@ -1,26 +1,26 @@
 package id.xtramile.flexretry;
 
-import id.xtramile.flexretry.strategy.backoff.BackoffRouter;
-import id.xtramile.flexretry.strategy.backoff.BackoffStrategy;
 import id.xtramile.flexretry.control.budget.RetryBudget;
 import id.xtramile.flexretry.control.bulkhead.Bulkhead;
 import id.xtramile.flexretry.control.cache.ResultCache;
-import id.xtramile.flexretry.observability.events.RetryEvent;
-import id.xtramile.flexretry.observability.events.RetryEventBus;
+import id.xtramile.flexretry.control.sf.SingleFlight;
+import id.xtramile.flexretry.control.tuning.MutableTuning;
+import id.xtramile.flexretry.control.tuning.RetrySwitch;
 import id.xtramile.flexretry.integrations.http.RetryAfterExtractor;
 import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
+import id.xtramile.flexretry.observability.events.RetryEvent;
+import id.xtramile.flexretry.observability.events.RetryEventBus;
 import id.xtramile.flexretry.observability.metrics.RetryMetrics;
+import id.xtramile.flexretry.observability.trace.TraceContext;
+import id.xtramile.flexretry.strategy.backoff.BackoffRouter;
+import id.xtramile.flexretry.strategy.backoff.BackoffStrategy;
 import id.xtramile.flexretry.strategy.policy.RetryPolicy;
-import id.xtramile.flexretry.control.sf.SingleFlight;
 import id.xtramile.flexretry.strategy.stop.CompositeStop;
 import id.xtramile.flexretry.strategy.stop.FixedAttemptsStop;
 import id.xtramile.flexretry.strategy.stop.MaxElapsedStop;
 import id.xtramile.flexretry.strategy.stop.StopStrategy;
-import id.xtramile.flexretry.support.time.Clock;
 import id.xtramile.flexretry.strategy.timeout.AttemptTimeoutStrategy;
-import id.xtramile.flexretry.observability.trace.TraceContext;
-import id.xtramile.flexretry.control.tuning.MutableTuning;
-import id.xtramile.flexretry.control.tuning.RetrySwitch;
+import id.xtramile.flexretry.support.time.Clock;
 
 import java.time.Duration;
 import java.util.*;
@@ -145,6 +145,42 @@ public final class RetryExecutor<T> {
         this.cacheTtl = cacheTtl;
         this.eventBus = eventBus;
         this.trace = trace;
+    }
+
+    private static Throwable unwrap(Throwable throwable) {
+        if (throwable instanceof RuntimeException && throwable.getCause() != null) {
+            return throwable.getCause();
+        } else if (throwable instanceof CompletionException && throwable.getCause() != null) {
+            return throwable.getCause();
+        } else if (throwable instanceof RuntimeException && throwable.getCause() != null) {
+            return throwable.getCause().getCause();
+        }
+
+        return throwable;
+    }
+
+    private static void safeRun(Runnable r) {
+        try {
+            r.run();
+        } catch (Throwable ignore) {
+        }
+    }
+
+    private static <R> R nullSafe(SupplierWithException<R> supplier) {
+        try {
+            return supplier.get();
+        } catch (Throwable ignore) {
+            return null;
+        }
+    }
+
+    private static <R> R nullSafe(SupplierWithException<R> supplier, R fallback) {
+        try {
+            R result = supplier.get();
+            return result == null ? fallback : result;
+        } catch (Throwable ignore) {
+            return fallback;
+        }
     }
 
     public T run() {
@@ -285,7 +321,8 @@ public final class RetryExecutor<T> {
         if (bulkhead != null) {
             try {
                 bulkhead.release();
-            } catch (Throwable ignore) {}
+            } catch (Throwable ignore) {
+            }
         }
     }
 
@@ -303,7 +340,8 @@ public final class RetryExecutor<T> {
         if (trace != null) {
             try {
                 trace.exit(null);
-            } catch (Throwable ignore) {}
+            } catch (Throwable ignore) {
+            }
         }
     }
 
@@ -324,7 +362,8 @@ public final class RetryExecutor<T> {
                 safeRun(() -> listeners.afterAttemptSuccess.accept(result, ctxBefore));
                 return handleSuccess(attempt, result);
             }
-        } catch (Throwable ignore) {}
+        } catch (Throwable ignore) {
+        }
 
         return null;
     }
@@ -358,10 +397,10 @@ public final class RetryExecutor<T> {
             return null; // Budget acquired, continue retry
         }
 
-        return handleFailureWithFallback(attempt, lastResult, lastError, 
-            (ctx, err) -> metrics.exhausted(name, attempt, err),
+        return handleFailureWithFallback(attempt, lastResult, lastError,
+                (ctx, err) -> metrics.exhausted(name, attempt, err),
                 RetryEvent.Exhausted::new,
-            "Retry denied by budget at attempt " + attempt);
+                "Retry denied by budget at attempt " + attempt);
     }
 
     private void sleepAdjusted(Duration proposed, RetryContext<T> ctx, Throwable error, T result) throws InterruptedException {
@@ -392,7 +431,8 @@ public final class RetryExecutor<T> {
 
             try {
                 safeRun(() -> cache.put(key, result, cacheTtl));
-            } catch (Throwable ignore) {}
+            } catch (Throwable ignore) {
+            }
         }
 
         return finalResult;
@@ -416,23 +456,23 @@ public final class RetryExecutor<T> {
 
     private T finalizeFailure(int attempt, T lastResult, Throwable lastError) {
         return handleFailureWithFallback(attempt, lastResult, lastError,
-            (ctx, err) -> metrics.attemptFailed(name, attempt, err),
+                (ctx, err) -> metrics.attemptFailed(name, attempt, err),
                 RetryEvent.AttemptFailed::new,
-            "Retry failed after " + attempt + " attempt(s)");
+                "Retry failed after " + attempt + " attempt(s)");
     }
 
     private T handleExhausted(String message, T lastResult, Throwable lastError, int attempts) {
         return handleFailureWithFallback(attempts, lastResult, lastError,
-            (ctx, err) -> metrics.exhausted(name, attempts, err),
+                (ctx, err) -> metrics.exhausted(name, attempts, err),
                 RetryEvent.Exhausted::new,
-            message);
+                message);
     }
 
     private T handleInterrupted(int attempt, InterruptedException ie) {
         return handleFailureWithFallback(attempt, null, ie,
-            (ctx, err) -> metrics.attemptFailed(name, attempt, err),
+                (ctx, err) -> metrics.attemptFailed(name, attempt, err),
                 RetryEvent.AttemptFailed::new,
-            "Interrupted during retry");
+                "Interrupted during retry");
     }
 
     private T handleFailureWithFallback(int attempt, T lastResult, Throwable lastError,
@@ -493,41 +533,6 @@ public final class RetryExecutor<T> {
         } catch (TimeoutException te) {
             future.cancel(true);
             throw te;
-        }
-    }
-
-    private static Throwable unwrap(Throwable throwable) {
-        if (throwable instanceof RuntimeException && throwable.getCause() != null) {
-            return throwable.getCause();
-        } else if (throwable instanceof CompletionException && throwable.getCause() != null) {
-            return throwable.getCause();
-        } else if (throwable instanceof RuntimeException && throwable.getCause() != null) {
-            return throwable.getCause().getCause();
-        }
-
-        return throwable;
-    }
-
-    private static void safeRun(Runnable r) {
-        try {
-            r.run();
-        } catch (Throwable ignore) {}
-    }
-
-    private static <R> R nullSafe(SupplierWithException<R> supplier) {
-        try {
-            return supplier.get();
-        } catch (Throwable ignore) {
-            return null;
-        }
-    }
-
-    private static <R> R nullSafe(SupplierWithException<R> supplier, R fallback) {
-        try {
-            R result = supplier.get();
-            return result == null ? fallback : result;
-        } catch (Throwable ignore) {
-            return fallback;
         }
     }
 
