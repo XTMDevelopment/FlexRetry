@@ -25,8 +25,9 @@ import id.xtramile.flexretry.tuning.RetrySwitch;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 /**
  * Runs the attempt loop using a policy + backoff + listeners
@@ -155,259 +156,66 @@ public final class RetryExecutor<T> {
 
         try {
             for (int attempt = 1; ; attempt++) {
-                Duration nextDelay;
-                if (lastError != null && backoffRouter != null) {
-                    nextDelay = backoffRouter.select(lastError).delayForAttempt(attempt);
-                } else {
-                    nextDelay = backoff.delayForAttempt(attempt);
+                final Duration nextDelay = computeNextDelay(attempt, lastError);
+                final RetryContext<T> ctxBefore = buildContext(attempt, lastResult, lastError, nextDelay);
+
+                if (shouldStopBeforeAttempt(attempt, startNanos, nextDelay)) {
+                    return handleExhausted("Retry exhausted at attempt " + (attempt - 1), lastResult, lastError, attempt - 1);
                 }
 
-                RetryContext<T> ctxBefore = new RetryContext<>(id, attempt, Integer.MAX_VALUE, lastResult, lastError, nextDelay, tags);
+                announceAttempt(ctxBefore, attempt);
 
-                long now = clock.nanoTime();
-                if (attempt > 1 && effectiveStop(stop).shouldStop(attempt, startNanos, now, nextDelay)) {
-                    finalAttempt = attempt - 1;
-
-                    RetryContext<T> ctxFail = new RetryContext<>(id, finalAttempt, finalAttempt, lastResult, lastError, Duration.ZERO, tags);
-                    safeRun(() -> listeners.onFailure(lastError, ctxFail));
-                    metrics.exhausted(name, finalAttempt, lastError);
-
-                    if (eventBus != null) {
-                        safeRun(() -> eventBus.publish(new RetryEvent.Exhausted<>(ctxFail, lastError)));
-                    }
-
-                    if (fallback != null) {
-                        safeRun(() -> listeners.onRecover.accept(ctxFail));
-                        return fallback.apply(lastError);
-                    }
-
-                    throw new RetryException("Retry exhausted at attempt " + finalAttempt, lastError, finalAttempt);
+                if (!acquireBulkheadIfAny(attempt, lastResult, lastError)) {
+                    return handleExhausted("Bulkhead full; cannot acquire", lastResult, lastError, Math.max(1, attempt - 1));
                 }
 
-                safeRun(() -> listeners.onAttempt.accept(ctxBefore));
-                metrics.attemptStarted(name, attempt);
+                enterTraceAndLifecycle(ctxBefore);
 
-                if (eventBus != null) {
-                    eventBus.publish(new RetryEvent.AttemptStarted<>(ctxBefore));
-                }
-
-                boolean bulkheadAcquired = false;
-                if (bulkhead != null) {
-                    bulkheadAcquired = bulkhead.tryAcquire();
-
-                    if (!bulkheadAcquired) {
-                        finalAttempt = Math.max(1, attempt - 1);
-
-                        RetryContext<T> ctxFail = new RetryContext<>(id, finalAttempt, finalAttempt, lastResult, lastError, Duration.ZERO, tags);
-                        safeRun(() -> listeners.onFailure.accept(lastError, ctxFail));
-                        metrics.exhausted(name, finalAttempt, lastError);
-
-                        if (eventBus != null) {
-                            safeRun(() -> eventBus.publish(RetryEvent.Exhausted(ctxFail, lastError)));
-                        }
-
-                        if (fallback != null) {
-                            safeRun(() -> listeners.onRecover.accept(ctxFail));
-                            return fallback.apply(lastError);
-                        }
-
-                        throw new RetryException("Bulkhead full; cannot acquire", null, finalAttempt);
-                    }
-                }
-
-                if (trace != null) {
-                    safeRun(() -> trace.enter(ctxBefore));
-                }
-
-                if (lifecycle != null) {
-                    lifecycle.beforeAttempt(ctxBefore);
-                }
-
-                if (cache != null && cacheKeyFn != null) {
-                    String key = nullSafe(() -> cacheKeyFn.apply(ctxBefore));
-
-                    if (key != null) {
-                        try {
-                            Optional<T> hit = cache.get(key);
-
-                            if (hit.isPresent()) {
-                                T result = hit.get();
-                                finalAttempt = attempt;
-
-                                RetryContext<T> ctxSuccess = new RetryContext<>(id, attempt, attempt, result, null, Duration.ZERO, tags);
-                                safeRun(() -> listeners.afterAttemptSuccess.accept(result, ctxBefore));
-                                safeRun(() -> listeners.onSuccess.accept(result, ctxSuccess));
-                                metrics.attemptSucceeded(name, attempt);
-
-                                if (eventBus != null) {
-                                    safeRun(() -> eventBus.publish(new RetryEvent.AttemptSucceeded<>(ctxSuccess, result)));
-                                }
-
-                                if (lifecycle != null) {
-                                    safeRun(() -> lifecycle.afterSuccess(ctxSuccess));
-                                }
-
-                                return result;
-                            }
-
-                        } catch (Throwable ignore) {}
-                    }
+                T cached = tryHitCache(ctxBefore, attempt);
+                if (cached != null) {
+                    return cached;
                 }
 
                 try {
-                    T result;
-                    if (coalesceBy != null && singleFlight != null) {
-                        String key = nullSafe(() -> coalesceBy.apply(ctxBefore));
-
-                        if (key != null) {
-                            result = singleFlight.execute(key, () -> executeAttempt(attempt));
-                        } else {
-                            result = executeAttempt(attempt);
-                        }
-
-                    } else {
-                        result = executeAttempt(attempt);
-                    }
-
+                    T result = executeWithSingleFlight(attempt, ctxBefore);
                     lastResult = result;
                     lastError = null;
 
-                    safeRun(() -> listeners.afterAttemptSuccess.accept(result, ctxBefore));
+                    afterAttemptSuccess(ctxBefore, result);
 
-                    boolean again = policy.shouldRetry(result, null, attempt, Integer.MAX_VALUE);
-                    if (again) {
-                        if (!budget.tryAcquire()) {
-                            finalAttempt = attempt;
-
-                            RetryContext<T> ctxFail = new RetryContext<>(id, finalAttempt, finalAttempt, result, null, Duration.ZERO, tags);
-                            safeRun(() -> listeners.onFailure.accept(null, ctxFail));
-                            metrics.exhausted(name, finalAttempt, null);
-
-                            if (eventBus != null) {
-                                safeRun(() -> eventBus.publish(new RetryEvent.Exhausted<>(ctxFail, null)));
-                            }
-
-                            if (fallback != null) {
-                                safeRun(() -> listeners.onRecover.accept(ctxFail));
-                                return fallback.apply(null);
-                            }
-
-                            throw new RetryException("Retry denied by budget at attempt " + attempt, null, attempt);
+                    if (policy.shouldRetry(result, null, attempt, Integer.MAX_VALUE)) {
+                        T budgetResult = tryAcquireBudgetOrFail(attempt, result, null);
+                        if (budgetResult != null) {
+                            return budgetResult;
                         }
 
-                        Duration adjusted = nextDelay;
-                        if (retryAfterExtractor != null) {
-                            Duration hint = nullSafe(() -> retryAfterExtractor.extract(lastError, result));
-
-                            if (hint != null) {
-                                adjusted = hint;
-                            }
-                        }
-
-                        Duration finalDelay = adjusted;
-                        adjusted = nullSafe(() -> listeners.beforeSleep.apply(finalDelay, ctxBefore));
-
-                        sleeper.sleep(adjusted);
+                        sleepAdjusted(nextDelay, ctxBefore, null, result);
                         continue;
                     }
 
                     finalAttempt = attempt;
-
-                    RetryContext<T> ctxSuccess = new RetryContext<>(id, attempt, attempt, result, null, Duration.ZERO, tags);
-                    safeRun(() -> listeners.onSuccess.accept(result, ctxSuccess));
-                    metrics.attemptSucceeded(name, attempt);
-
-                    if (eventBus != null) {
-                        safeRun(() -> eventBus.publish(new RetryEvent.AttemptSucceeded<>(ctxSuccess, result)));
-                    }
-
-                    if (lifecycle != null) {
-                        safeRun(() -> lifecycle.afterSuccess(ctxSuccess));
-                    }
-
-                    if (cache != null && cacheKeyFn != null && cacheTtl != null) {
-                        String key = nullSafe(() -> cacheKeyFn.apply(ctxSuccess));
-
-                        try {
-                            safeRun(() -> cache.put(key, result, cacheTtl));
-                        } catch (Throwable ignore) {}
-                    }
-
-                    return result;
+                    return finalizeSuccess(attempt, result);
 
                 } catch (Throwable e) {
                     lastError = unwrap(e);
+                    afterAttemptFailure(ctxBefore, lastError);
 
-                    safeRun(() -> listeners.afterAttemptFailure.accept(lastError, ctxBefore));
-
-                    if (lifecycle != null) {
-                        safeRun(() -> lifecycle.afterFailure(ctxBefore, lastError));
-                    }
-
-                    boolean again = policy.shouldRetry(null, lastError, attempt, Integer.MAX_VALUE);
-                    if (again) {
-                        if (!budget.tryAcquire()) {
-                            finalAttempt = attempt;
-
-                            RetryContext<T> ctxFail = new RetryContext<>(id, finalAttempt, finalAttempt, lastResult, lastError, Duration.ZERO, tags);
-                            safeRun(() -> listeners.onFailure.accept(lastError, ctxFail));
-                            metrics.exhausted(name, finalAttempt, lastError);
-
-                            if (eventBus != null) {
-                                safeRun(() -> eventBus.publish(new RetryEvent.Exhausted<>(ctxFail, lastError)));
-                            }
-
-                            if (fallback != null) {
-                                safeRun(() -> listeners.onRecover.accept(ctxFail));
-                                return fallback.apply(lastError);
-                            }
-
-                            throw new RetryException("Retry denied by budget at attempt " + attempt, lastError, attempt);
+                    if (policy.shouldRetry(null, lastError, attempt, Integer.MAX_VALUE)) {
+                        T budgetResult = tryAcquireBudgetOrFail(attempt, lastResult, lastError);
+                        if (budgetResult != null) {
+                            return budgetResult;
                         }
 
-                        Duration adjusted = nextDelay;
-                        if (retryAfterExtractor != null) {
-                            Duration hint = nullSafe(() -> retryAfterExtractor.extract(lastError, null));
-
-                            if (hint != null) {
-                                adjusted = hint;
-                            }
-                        }
-
-                        Duration finalDelay = adjusted;
-                        adjusted = nullSafe(() -> listeners.beforeSleep.apply(finalDelay, ctxBefore), finalDelay);
-
-                        sleeper.sleep(adjusted);
+                        sleepAdjusted(nextDelay, ctxBefore, lastError, null);
                         continue;
                     }
 
                     finalAttempt = attempt;
-
-                    RetryContext<T> ctxFail = new RetryContext<>(id, finalAttempt, finalAttempt, lastResult, lastError, Duration.ZERO, tags);
-                    safeRun(() -> listeners.onFailure.accept(lastError, ctxFail));
-                    metrics.attemptFailed(name, attempt, lastError);
-
-                    if (eventBus != null) {
-                        safeRun(() -> eventBus.publish(new RetryEvent.AttemptFailed<>(ctxBefore, lastError)));
-                    }
-
-                    if (fallback != null) {
-                        safeRun(() -> listeners.onRecover.accept(ctxFail));
-                        return fallback.apply(lastError);
-                    }
-
-                    throw new RetryException("Retry failed after " + attempt + " attempt(s)", lastError, attempt);
+                    return finalizeFailure(attempt, lastResult, lastError);
 
                 } finally {
-                    if (trace != null) {
-                        safeRun(() -> trace.exit(ctxBefore));
-                    }
-
-                    if (bulkhead != null) {
-                        try {
-                            bulkhead.release();
-                        } catch (Throwable ignore) {}
-                    }
+                    exitTrace();
+                    releaseBulkheadIfAny();
                 }
             }
 
@@ -415,26 +223,237 @@ public final class RetryExecutor<T> {
             Thread.currentThread().interrupt();
 
             int att = finalAttempt == 0 ? 1 : finalAttempt;
-
-            RetryContext<T> ctxFail = new RetryContext<>(id, att, att, null, ie, Duration.ZERO, tags);
-            safeRun(() -> listeners.onFailure.accept(ie, ctxFail));
-            metrics.attemptFailed(name, att, ie);
-
-            if (eventBus != null) {
-                safeRun(() -> eventBus.publish(new RetryEvent.AttemptFailed<>(ctxFail, ie)));
-            }
-
-            if (fallback != null) {
-                safeRun(() -> listeners.onRecover.accept(ctxFail));
-                return fallback.apply(ie);
-            }
-
-            throw new RetryException("Interrupted during retry", ie, att);
+            return handleInterrupted(att, ie);
 
         } finally {
             int att = finalAttempt == 0 ? 1 : finalAttempt;
             safeRun(() -> listeners.onFinally.accept(new RetryContext<>(id, att, att, null, null, Duration.ZERO, tags)));
         }
+    }
+
+    private Duration computeNextDelay(int attempt, Throwable lastError) {
+        if (lastError != null && backoffRouter != null) {
+            return backoffRouter.select(lastError).delayForAttempt(attempt);
+        }
+
+        return backoff.delayForAttempt(attempt);
+    }
+
+    private RetryContext<T> buildContext(int attempt, T lastResult, Throwable lastError, Duration nextDelay) {
+        return new RetryContext<>(id, attempt, Integer.MAX_VALUE, lastResult, lastError, nextDelay, tags);
+    }
+
+    private boolean shouldStopBeforeAttempt(int attempt, long startNanos, Duration nextDelay) {
+        if (attempt <= 1) {
+            return false;
+        }
+
+        long now = clock.nanoTime();
+        return effectiveStop(stop).shouldStop(attempt, startNanos, now, nextDelay);
+    }
+
+    private void announceAttempt(RetryContext<T> ctxBefore, int attempt) {
+        safeRun(() -> listeners.onAttempt.accept(ctxBefore));
+        metrics.attemptStarted(name, attempt);
+
+        if (eventBus != null) {
+            safeRun(() -> eventBus.publish(new RetryEvent.AttemptStarted<>(ctxBefore)));
+        }
+    }
+
+    private boolean acquireBulkheadIfAny(int attempt, T lastResult, Throwable lastError) {
+        if (bulkhead == null) {
+            return true;
+        }
+
+        boolean ok = bulkhead.tryAcquire();
+        if (!ok) {
+            int failedAttempt = Math.max(1, attempt - 1);
+            RetryContext<T> ctxFail = new RetryContext<>(id, failedAttempt, failedAttempt, lastResult, lastError, Duration.ZERO, tags);
+            safeRun(() -> listeners.onFailure.accept(lastError, ctxFail));
+            metrics.exhausted(name, failedAttempt, lastError);
+
+            if (eventBus != null) {
+                safeRun(() -> eventBus.publish(new RetryEvent.Exhausted<>(ctxFail, lastError)));
+            }
+        }
+
+        return ok;
+    }
+
+    private void releaseBulkheadIfAny() {
+        if (bulkhead != null) {
+            try {
+                bulkhead.release();
+            } catch (Throwable ignore) {}
+        }
+    }
+
+    private void enterTraceAndLifecycle(RetryContext<T> ctxBefore) {
+        if (trace != null) {
+            safeRun(() -> trace.enter(ctxBefore));
+        }
+
+        if (lifecycle != null) {
+            safeRun(() -> lifecycle.beforeAttempt(ctxBefore));
+        }
+    }
+
+    private void exitTrace() {
+        if (trace != null) {
+            try {
+                trace.exit(null);
+            } catch (Throwable ignore) {}
+        }
+    }
+
+    private T tryHitCache(RetryContext<T> ctxBefore, int attempt) {
+        if (cache == null || cacheKeyFn == null) {
+            return null;
+        }
+
+        String key = nullSafe(() -> cacheKeyFn.apply(ctxBefore));
+        if (key == null) {
+            return null;
+        }
+
+        try {
+            Optional<T> opt = cache.get(key);
+            if (opt.isPresent()) {
+                T result = opt.get();
+                safeRun(() -> listeners.afterAttemptSuccess.accept(result, ctxBefore));
+                return handleSuccess(attempt, result);
+            }
+        } catch (Throwable ignore) {}
+
+        return null;
+    }
+
+    private T executeWithSingleFlight(int attempt, RetryContext<T> ctxBefore) throws Exception {
+        if (coalesceBy != null && singleFlight != null) {
+            String key = nullSafe(() -> coalesceBy.apply(ctxBefore));
+
+            if (key != null) {
+                return singleFlight.execute(key, () -> executeAttempt(attempt));
+            }
+        }
+
+        return executeAttempt(attempt);
+    }
+
+    private void afterAttemptSuccess(RetryContext<T> ctxBefore, T result) {
+        safeRun(() -> listeners.afterAttemptSuccess.accept(result, ctxBefore));
+    }
+
+    private void afterAttemptFailure(RetryContext<T> ctxBefore, Throwable error) {
+        safeRun(() -> listeners.afterAttemptFailure.accept(error, ctxBefore));
+
+        if (lifecycle != null) {
+            safeRun(() -> lifecycle.afterFailure(ctxBefore, error));
+        }
+    }
+
+    private T tryAcquireBudgetOrFail(int attempt, T lastResult, Throwable lastError) {
+        if (budget.tryAcquire()) {
+            return null; // Budget acquired, continue retry
+        }
+
+        return handleFailureWithFallback(attempt, lastResult, lastError, 
+            (ctx, err) -> metrics.exhausted(name, attempt, err),
+                RetryEvent.Exhausted::new,
+            "Retry denied by budget at attempt " + attempt);
+    }
+
+    private void sleepAdjusted(Duration proposed, RetryContext<T> ctx, Throwable error, T result) throws InterruptedException {
+        Duration adjusted = proposed;
+
+        if (retryAfterExtractor != null) {
+            Duration hint = (error != null)
+                    ? nullSafe(() -> retryAfterExtractor.extract(error, null))
+                    : nullSafe(() -> retryAfterExtractor.extract(null, result));
+
+            if (hint != null) {
+                adjusted = hint;
+            }
+        }
+
+        Duration finalDelay = adjusted;
+        adjusted = nullSafe(() -> listeners.beforeSleep.apply(finalDelay, ctx), finalDelay);
+
+        sleeper.sleep(adjusted);
+    }
+
+    private T finalizeSuccess(int attempt, T result) {
+        T finalResult = handleSuccess(attempt, result);
+
+        if (cache != null && cacheKeyFn != null && cacheTtl != null) {
+            RetryContext<T> ctxSuccess = new RetryContext<>(id, attempt, attempt, result, null, Duration.ZERO, tags);
+            String key = nullSafe(() -> cacheKeyFn.apply(ctxSuccess));
+
+            try {
+                safeRun(() -> cache.put(key, result, cacheTtl));
+            } catch (Throwable ignore) {}
+        }
+
+        return finalResult;
+    }
+
+    private T handleSuccess(int attempt, T result) {
+        RetryContext<T> ctxSuccess = new RetryContext<>(id, attempt, attempt, result, null, Duration.ZERO, tags);
+        safeRun(() -> listeners.onSuccess.accept(result, ctxSuccess));
+        metrics.attemptSucceeded(name, attempt);
+
+        if (eventBus != null) {
+            safeRun(() -> eventBus.publish(new RetryEvent.AttemptSucceeded<>(ctxSuccess, result)));
+        }
+
+        if (lifecycle != null) {
+            safeRun(() -> lifecycle.afterSuccess(ctxSuccess));
+        }
+
+        return result;
+    }
+
+    private T finalizeFailure(int attempt, T lastResult, Throwable lastError) {
+        return handleFailureWithFallback(attempt, lastResult, lastError,
+            (ctx, err) -> metrics.attemptFailed(name, attempt, err),
+                RetryEvent.AttemptFailed::new,
+            "Retry failed after " + attempt + " attempt(s)");
+    }
+
+    private T handleExhausted(String message, T lastResult, Throwable lastError, int attempts) {
+        return handleFailureWithFallback(attempts, lastResult, lastError,
+            (ctx, err) -> metrics.exhausted(name, attempts, err),
+                RetryEvent.Exhausted::new,
+            message);
+    }
+
+    private T handleInterrupted(int attempt, InterruptedException ie) {
+        return handleFailureWithFallback(attempt, null, ie,
+            (ctx, err) -> metrics.attemptFailed(name, attempt, err),
+                RetryEvent.AttemptFailed::new,
+            "Interrupted during retry");
+    }
+
+    private T handleFailureWithFallback(int attempt, T lastResult, Throwable lastError,
+                                        BiConsumer<RetryContext<T>, Throwable> metricsFn,
+                                        BiFunction<RetryContext<T>, Throwable, RetryEvent<T>> eventFn,
+                                        String errorMessage) {
+        RetryContext<T> ctxFail = new RetryContext<>(id, attempt, attempt, lastResult, lastError, Duration.ZERO, tags);
+        safeRun(() -> listeners.onFailure.accept(lastError, ctxFail));
+        safeRun(() -> metricsFn.accept(ctxFail, lastError));
+
+        if (eventBus != null) {
+            RetryEvent<T> event = eventFn.apply(ctxFail, lastError);
+            safeRun(() -> eventBus.publish(event));
+        }
+
+        if (fallback != null) {
+            safeRun(() -> listeners.onRecover.accept(ctxFail));
+            return fallback.apply(lastError);
+        }
+
+        throw new RetryException(errorMessage, lastError, attempt);
     }
 
     private StopStrategy effectiveStop(StopStrategy base) {
@@ -470,7 +489,7 @@ public final class RetryExecutor<T> {
         Future<T> future = exec.submit(task);
 
         try {
-            return future.get(attemptTimeout.toMillis(), TimeUnit.MILLISECONDS);
+            return future.get(perAttempt.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException te) {
             future.cancel(true);
             throw te;

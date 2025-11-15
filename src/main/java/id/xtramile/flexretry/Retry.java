@@ -390,7 +390,7 @@ public final class Retry<T> {
                     retrySwitch,
                     tuning,
                     bulkhead,
-                    singleFlight, bulkhead,
+                    singleFlight, coalesceBy,
                     lifecycle,
                     cache, cacheKeyFn, cacheTtl,
                     eventBus,
