@@ -7,6 +7,7 @@ import id.xtramile.flexretry.bulkhead.Bulkhead;
 import id.xtramile.flexretry.config.RetryConfig;
 import id.xtramile.flexretry.config.RetryTemplate;
 import id.xtramile.flexretry.http.RetryAfterExtractor;
+import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
 import id.xtramile.flexretry.metrics.RetryMetrics;
 import id.xtramile.flexretry.policy.*;
 import id.xtramile.flexretry.sf.SingleFlight;
@@ -68,6 +69,7 @@ public final class Retry<T> {
 
         private Function<RetryContext<?>, String> coalesceBy = null;
         private SingleFlight<T> singleFlight = null;
+        private AttemptLifecycle<T> lifecycle = null;
 
         public Builder<T> name(String name) {
             this.name = Objects.requireNonNull(name);
@@ -238,6 +240,11 @@ public final class Retry<T> {
             return this;
         }
 
+        public Builder<T> lifecycle(AttemptLifecycle<T> lifecycle) {
+            this.lifecycle = lifecycle;
+            return this;
+        }
+
         public Builder<T> execute(Supplier<T> supplier) {
             Objects.requireNonNull(supplier, "supplier");
             this.task = supplier::get;
@@ -291,7 +298,7 @@ public final class Retry<T> {
                     attemptTimeout, attemptExecutor,
                     task, fallback, backoffRouter, retryAfterExtractor,
                     retrySwitch, tuning, bulkhead,
-                    coalesceBy, singleFlight
+                    coalesceBy, singleFlight, lifecycle
             );
         }
     }

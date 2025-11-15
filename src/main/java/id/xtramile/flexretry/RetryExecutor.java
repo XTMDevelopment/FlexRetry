@@ -5,6 +5,7 @@ import id.xtramile.flexretry.backoff.BackoffStrategy;
 import id.xtramile.flexretry.budget.RetryBudget;
 import id.xtramile.flexretry.bulkhead.Bulkhead;
 import id.xtramile.flexretry.http.RetryAfterExtractor;
+import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
 import id.xtramile.flexretry.metrics.RetryMetrics;
 import id.xtramile.flexretry.policy.RetryPolicy;
 import id.xtramile.flexretry.sf.SingleFlight;
@@ -54,6 +55,7 @@ public final class RetryExecutor<T> {
 
     private final Function<RetryContext<?>, String> coalesceBy;
     private final SingleFlight<T> singleFlight;
+    private final AttemptLifecycle<T> lifecycle;
 
     public RetryExecutor(
             String name,
@@ -77,7 +79,8 @@ public final class RetryExecutor<T> {
             MutableTuning tuning,
             Bulkhead bulkhead,
             Function<RetryContext<?>, String> coalesceBy,
-            SingleFlight<T> singleFlight
+            SingleFlight<T> singleFlight,
+            AttemptLifecycle<T> lifecycle
     ) {
         this.name = Objects.requireNonNull(name, "name");
         this.id = Objects.requireNonNull(id, "id");
@@ -104,6 +107,7 @@ public final class RetryExecutor<T> {
 
         this.coalesceBy = coalesceBy;
         this.singleFlight = singleFlight;
+        this.lifecycle = lifecycle;
     }
 
     public T run() {
@@ -129,6 +133,10 @@ public final class RetryExecutor<T> {
                 }
 
                 RetryContext<T> ctxBefore = new RetryContext<>(id, attempt, Integer.MAX_VALUE, lastResult, lastError, nextDelay, tags);
+
+                if (lifecycle != null) {
+                    lifecycle.beforeAttempt(ctxBefore);
+                }
 
                 listeners.onAttempt.accept(ctxBefore);
                 metrics.attemptStarted(name, attempt);
@@ -203,6 +211,10 @@ public final class RetryExecutor<T> {
                         bulkhead.release();
                     }
 
+                    if (lifecycle != null) {
+                        lifecycle.afterSuccess(ctxSuccess);
+                    }
+
                     return result;
 
                 } catch (Throwable e) {
@@ -254,6 +266,10 @@ public final class RetryExecutor<T> {
 
                     if (bulkhead != null) {
                         bulkhead.release();
+                    }
+
+                    if (lifecycle != null) {
+                        lifecycle.afterFailure(ctxBefore, lastError);
                     }
 
                     throw new RetryException("Retry failed after " + attempt + " attempt(s)", lastError, attempt);
