@@ -1,5 +1,6 @@
 package id.xtramile.flexretry;
 
+import id.xtramile.flexretry.backoff.BackoffRouter;
 import id.xtramile.flexretry.backoff.BackoffStrategy;
 import id.xtramile.flexretry.budget.RetryBudget;
 import id.xtramile.flexretry.metrics.RetryMetrics;
@@ -35,6 +36,8 @@ public final class RetryExecutor<T> {
     private final Callable<T> task;
     private final Function<Throwable, T> fallback;
 
+    private final BackoffRouter backoffRouter;
+
     public RetryExecutor(
             String name,
             String id,
@@ -50,7 +53,8 @@ public final class RetryExecutor<T> {
             Duration attemptTimeout,
             ExecutorService attemptExecutor,
             Callable<T> task,
-            Function<Throwable, T> fallback
+            Function<Throwable, T> fallback,
+            BackoffRouter backoffRouter
     ) {
         this.name = Objects.requireNonNull(name, "name");
         this.id = Objects.requireNonNull(id, "id");
@@ -69,6 +73,7 @@ public final class RetryExecutor<T> {
         this.attemptExecutor = attemptExecutor;
         this.task = Objects.requireNonNull(task, "task");
         this.fallback = fallback;
+        this.backoffRouter = backoffRouter;
     }
 
     public T run() {
@@ -80,7 +85,14 @@ public final class RetryExecutor<T> {
 
         try {
             for (int attempt = 1; ; attempt++) {
-                Duration nextDelay = backoff.delayForAttempt(attempt);
+                Duration nextDelay;
+
+                if (lastError != null && backoffRouter != null) {
+                    nextDelay = backoffRouter.select(lastError).delayForAttempt(attempt);
+                } else {
+                    nextDelay = backoff.delayForAttempt(attempt);
+                }
+
                 RetryContext<T> ctxBefore = new RetryContext<>(id, attempt, Integer.MAX_VALUE, lastResult, lastError, nextDelay, tags);
 
                 listeners.onAttempt.accept(ctxBefore);

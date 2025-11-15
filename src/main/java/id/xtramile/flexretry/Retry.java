@@ -1,5 +1,6 @@
 package id.xtramile.flexretry;
 
+import id.xtramile.flexretry.backoff.BackoffRouter;
 import id.xtramile.flexretry.backoff.BackoffStrategy;
 import id.xtramile.flexretry.budget.RetryBudget;
 import id.xtramile.flexretry.config.RetryConfig;
@@ -53,6 +54,8 @@ public final class Retry<T> {
         // Task / fallback
         private Callable<T> task;
         private Function<Throwable, T> fallback = null;
+
+        private BackoffRouter backoffRouter = null;
 
         public Builder<T> name(String name) {
             this.name = Objects.requireNonNull(name);
@@ -196,6 +199,11 @@ public final class Retry<T> {
 
         public Builder<T> execute(Callable<T> callable) {
             this.task = Objects.requireNonNull(callable, "callable");
+            return this;
+        }
+
+        public Builder<T> backoffRouter(BackoffRouter backoffRouter) {
+            this.backoffRouter = backoffRouter;
             return this;
         }
 
