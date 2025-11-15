@@ -2,6 +2,8 @@ package id.xtramile.flexretry;
 
 import id.xtramile.flexretry.backoff.BackoffStrategy;
 import id.xtramile.flexretry.budget.RetryBudget;
+import id.xtramile.flexretry.config.RetryConfig;
+import id.xtramile.flexretry.config.RetryTemplate;
 import id.xtramile.flexretry.metrics.RetryMetrics;
 import id.xtramile.flexretry.policy.*;
 import id.xtramile.flexretry.stop.FixedAttemptsStop;
@@ -203,6 +205,19 @@ public final class Retry<T> {
             }
 
             return Policies.or(policies.toArray(new RetryPolicy[0]));
+        }
+
+        public RetryConfig<T> toConfig() {
+            return new RetryConfig<>(
+                    name, id, Map.copyOf(tags),
+                    stop, backoff, buildPolicy(), listeners,
+                    sleeper, clock, budget, metrics,
+                    attemptTimeout, attemptExecutor, fallback
+            );
+        }
+
+        public static <T> RetryTemplate<T> template(RetryConfig<T> cfg) {
+            return new RetryTemplate<>(cfg);
         }
 
         public T getResult() {
