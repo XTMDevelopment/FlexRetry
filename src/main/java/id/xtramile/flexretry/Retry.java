@@ -8,6 +8,7 @@ import id.xtramile.flexretry.cache.ResultCache;
 import id.xtramile.flexretry.config.RetryConfig;
 import id.xtramile.flexretry.config.RetryTemplate;
 import id.xtramile.flexretry.events.RetryEventBus;
+import id.xtramile.flexretry.health.HealthProbe;
 import id.xtramile.flexretry.http.RetryAfterExtractor;
 import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
 import id.xtramile.flexretry.metrics.RetryMetrics;
@@ -18,6 +19,7 @@ import id.xtramile.flexretry.stop.StopStrategy;
 import id.xtramile.flexretry.time.Clock;
 import id.xtramile.flexretry.timeouts.AttemptTimeoutStrategy;
 import id.xtramile.flexretry.trace.TraceContext;
+import id.xtramile.flexretry.tuning.DynamicTuning;
 import id.xtramile.flexretry.tuning.MutableTuning;
 import id.xtramile.flexretry.tuning.RetrySwitch;
 import id.xtramile.flexretry.window.RetryWindow;
@@ -83,6 +85,9 @@ public final class Retry<T> {
         private RetryEventBus<T> eventBus = null;
         private TraceContext trace = null;
         private AttemptTimeoutStrategy attemptTimeouts = null;
+
+        private HealthProbe healthProbe = null;
+        private DynamicTuning dynamicTuning = null;
 
         public Builder<T> name(String name) {
             this.name = Objects.requireNonNull(name);
@@ -285,6 +290,16 @@ public final class Retry<T> {
             return this;
         }
 
+        public Builder<T> healthProbe(HealthProbe healthProbe) {
+            this.healthProbe = healthProbe;
+            return this;
+        }
+
+        public Builder<T> dynamicTuning(DynamicTuning dynamicTuning) {
+            this.dynamicTuning = dynamicTuning;
+            return this;
+        }
+
         public Builder<T> execute(Supplier<T> supplier) {
             Objects.requireNonNull(supplier, "supplier");
             this.task = supplier::get;
@@ -323,7 +338,7 @@ public final class Retry<T> {
                     retrySwitch, tuning, bulkhead,
                     coalesceBy, singleFlight, lifecycle,
                     cache, cacheKeyFn, cacheTtl,
-                    eventBus, trace, attemptTimeouts
+                    eventBus, trace, attemptTimeouts, healthProbe, dynamicTuning
             );
         }
 
@@ -343,6 +358,10 @@ public final class Retry<T> {
         private RetryExecutor<T> buildExecutor() {
             if (task == null) {
                 throw new IllegalStateException("No task provided. Call execute(...) first.");
+            }
+
+            if (healthProbe != null && dynamicTuning != null) {
+                dynamicTuning.apply(healthProbe.state(), this);
             }
 
             return new RetryExecutor<>(
