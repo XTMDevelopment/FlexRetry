@@ -304,6 +304,15 @@ public final class Retry<T> {
             return Policies.or(policies.toArray(new RetryPolicy[0]));
         }
 
+        public RetryOutcome<T> getOutcome() {
+            try {
+                T result = getResult();
+                return new RetryOutcome<>(true, result, null, 0);
+            } catch (RetryException e) {
+                return new RetryOutcome<>(false, null, e.getCause(), e.attempts());
+            }
+        }
+
         public RetryConfig<T> toConfig() {
             return new RetryConfig<>(
                     name, id, Map.copyOf(tags),
