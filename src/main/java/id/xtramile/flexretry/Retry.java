@@ -4,6 +4,7 @@ import id.xtramile.flexretry.backoff.BackoffRouter;
 import id.xtramile.flexretry.backoff.BackoffStrategy;
 import id.xtramile.flexretry.budget.RetryBudget;
 import id.xtramile.flexretry.bulkhead.Bulkhead;
+import id.xtramile.flexretry.cache.ResultCache;
 import id.xtramile.flexretry.config.RetryConfig;
 import id.xtramile.flexretry.config.RetryTemplate;
 import id.xtramile.flexretry.http.RetryAfterExtractor;
@@ -70,6 +71,10 @@ public final class Retry<T> {
         private Function<RetryContext<?>, String> coalesceBy = null;
         private SingleFlight<T> singleFlight = null;
         private AttemptLifecycle<T> lifecycle = null;
+
+        private ResultCache<String, T> cache = null;
+        private Function<RetryContext<?>, String> cacheKeyFn = null;
+        private Duration cacheTtl = null;
 
         public Builder<T> name(String name) {
             this.name = Objects.requireNonNull(name);
@@ -245,6 +250,13 @@ public final class Retry<T> {
             return this;
         }
 
+        public Builder<T> cache(ResultCache<String, T> cache, Function<RetryContext<?>, String> keyFn, Duration ttl) {
+            this.cache = cache;
+            this.cacheKeyFn = keyFn;
+            this.cacheTtl = ttl;
+            return this;
+        }
+
         public Builder<T> execute(Supplier<T> supplier) {
             Objects.requireNonNull(supplier, "supplier");
             this.task = supplier::get;
@@ -298,7 +310,8 @@ public final class Retry<T> {
                     attemptTimeout, attemptExecutor,
                     task, fallback, backoffRouter, retryAfterExtractor,
                     retrySwitch, tuning, bulkhead,
-                    coalesceBy, singleFlight, lifecycle
+                    coalesceBy, singleFlight, lifecycle,
+                    cache, cacheKeyFn, cacheTtl
             );
         }
     }

@@ -4,6 +4,7 @@ import id.xtramile.flexretry.backoff.BackoffRouter;
 import id.xtramile.flexretry.backoff.BackoffStrategy;
 import id.xtramile.flexretry.budget.RetryBudget;
 import id.xtramile.flexretry.bulkhead.Bulkhead;
+import id.xtramile.flexretry.cache.ResultCache;
 import id.xtramile.flexretry.http.RetryAfterExtractor;
 import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
 import id.xtramile.flexretry.metrics.RetryMetrics;
@@ -18,10 +19,7 @@ import id.xtramile.flexretry.tuning.MutableTuning;
 import id.xtramile.flexretry.tuning.RetrySwitch;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Function;
 
@@ -57,6 +55,10 @@ public final class RetryExecutor<T> {
     private final SingleFlight<T> singleFlight;
     private final AttemptLifecycle<T> lifecycle;
 
+    private final ResultCache<String, T> cache;
+    private final Function<RetryContext<?>, String> cacheKeyFn;
+    private final Duration cacheTtl;
+
     public RetryExecutor(
             String name,
             String id,
@@ -80,7 +82,10 @@ public final class RetryExecutor<T> {
             Bulkhead bulkhead,
             Function<RetryContext<?>, String> coalesceBy,
             SingleFlight<T> singleFlight,
-            AttemptLifecycle<T> lifecycle
+            AttemptLifecycle<T> lifecycle,
+            ResultCache<String, T> cache,
+            Function<RetryContext<?>, String> cacheKeyFn,
+            Duration cacheTtl
     ) {
         this.name = Objects.requireNonNull(name, "name");
         this.id = Objects.requireNonNull(id, "id");
@@ -108,6 +113,10 @@ public final class RetryExecutor<T> {
         this.coalesceBy = coalesceBy;
         this.singleFlight = singleFlight;
         this.lifecycle = lifecycle;
+
+        this.cache = cache;
+        this.cacheKeyFn = cacheKeyFn;
+        this.cacheTtl = cacheTtl;
     }
 
     public T run() {
@@ -136,6 +145,19 @@ public final class RetryExecutor<T> {
 
                 if (lifecycle != null) {
                     lifecycle.beforeAttempt(ctxBefore);
+                }
+
+                if (cache != null && cacheKeyFn != null) {
+                    String key = cacheKeyFn.apply(ctxBefore);
+                    Optional<T> hit = cache.get(key);
+
+                    if (hit.isPresent()) {
+                        T result = hit.get();
+                        listeners.onSuccess.accept(result, new RetryContext<>(id, attempt, attempt, result, null, Duration.ZERO, tags));
+                        metrics.attemptSucceeded(name, attempt);
+
+                        return result;
+                    }
                 }
 
                 listeners.onAttempt.accept(ctxBefore);
@@ -213,6 +235,14 @@ public final class RetryExecutor<T> {
 
                     if (lifecycle != null) {
                         lifecycle.afterSuccess(ctxSuccess);
+                    }
+
+                    if (cache != null && cacheKeyFn != null && cacheTtl != null) {
+                        String key = cacheKeyFn.apply(ctxSuccess);
+
+                        try {
+                            cache.put(key, result, cacheTtl);
+                        } catch (Throwable ignore) {}
                     }
 
                     return result;
