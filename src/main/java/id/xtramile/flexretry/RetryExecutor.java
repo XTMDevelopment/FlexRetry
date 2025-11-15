@@ -6,10 +6,17 @@ import id.xtramile.flexretry.budget.RetryBudget;
 import id.xtramile.flexretry.http.RetryAfterExtractor;
 import id.xtramile.flexretry.metrics.RetryMetrics;
 import id.xtramile.flexretry.policy.RetryPolicy;
+import id.xtramile.flexretry.stop.CompositeStop;
+import id.xtramile.flexretry.stop.FixedAttemptsStop;
+import id.xtramile.flexretry.stop.MaxElapsedStop;
 import id.xtramile.flexretry.stop.StopStrategy;
 import id.xtramile.flexretry.time.Clock;
+import id.xtramile.flexretry.tuning.MutableTuning;
+import id.xtramile.flexretry.tuning.RetrySwitch;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.*;
@@ -39,6 +46,8 @@ public final class RetryExecutor<T> {
 
     private final BackoffRouter backoffRouter;
     private final RetryAfterExtractor<T> retryAfterExtractor;
+    private final RetrySwitch retrySwitch;
+    private final MutableTuning tuning;
 
     public RetryExecutor(
             String name,
@@ -57,7 +66,9 @@ public final class RetryExecutor<T> {
             Callable<T> task,
             Function<Throwable, T> fallback,
             BackoffRouter backoffRouter,
-            RetryAfterExtractor<T> retryAfterExtractor
+            RetryAfterExtractor<T> retryAfterExtractor,
+            RetrySwitch retrySwitch,
+            MutableTuning tuning
     ) {
         this.name = Objects.requireNonNull(name, "name");
         this.id = Objects.requireNonNull(id, "id");
@@ -78,6 +89,8 @@ public final class RetryExecutor<T> {
         this.fallback = fallback;
         this.backoffRouter = backoffRouter;
         this.retryAfterExtractor = retryAfterExtractor;
+        this.retrySwitch = retrySwitch;
+        this.tuning = tuning;
     }
 
     public T run() {
@@ -103,7 +116,7 @@ public final class RetryExecutor<T> {
                 metrics.attemptStarted(name, attempt);
 
                 long now = clock.nanoTime();
-                if (stop.shouldStop(attempt, start, now, nextDelay) && attempt > 1) {
+                if (effectiveStop(stop).shouldStop(attempt, start, now, nextDelay) && attempt > 1) {
                     finalAttempt = attempt - 1;
 
                     RetryContext<T> ctxFail = new RetryContext<>(id, finalAttempt, finalAttempt, lastResult, lastError, Duration.ZERO, tags);
@@ -247,6 +260,28 @@ public final class RetryExecutor<T> {
             future.cancel(true);
             throw te;
         }
+    }
+
+    private StopStrategy effectiveStop(StopStrategy base) {
+        StopStrategy stop = base;
+
+        if (tuning != null) {
+            List<StopStrategy> list = new ArrayList<>();
+            list.add(new FixedAttemptsStop(tuning.maxAttempts()));
+
+            if (tuning.maxElapsed() != null) {
+                list.add(new MaxElapsedStop(tuning.maxElapsed()));
+            }
+
+            stop = new CompositeStop(list.toArray(new StopStrategy[0]));
+        }
+
+        if (retrySwitch != null) {
+            StopStrategy sw = ((attempt, startNanos, nowNanos, nextDelay) -> !retrySwitch.isOn());
+            stop = new CompositeStop(stop, sw);
+        }
+
+        return stop;
     }
 
     private static Throwable unwrap(Throwable throwable) {

@@ -11,6 +11,8 @@ import id.xtramile.flexretry.policy.*;
 import id.xtramile.flexretry.stop.FixedAttemptsStop;
 import id.xtramile.flexretry.stop.StopStrategy;
 import id.xtramile.flexretry.time.Clock;
+import id.xtramile.flexretry.tuning.MutableTuning;
+import id.xtramile.flexretry.tuning.RetrySwitch;
 
 import java.time.Duration;
 import java.util.*;
@@ -46,7 +48,7 @@ public final class Retry<T> {
         private final List<RetryPolicy<T>> policies = new ArrayList<>();
 
         // Infra
-        private RetryListeners<T> listeners = new RetryListeners<>();
+        private final RetryListeners<T> listeners = new RetryListeners<>();
         private Sleeper sleeper = Sleeper.system();
         private Clock clock = Clock.system();
         private RetryBudget budget = RetryBudget.unlimited();
@@ -58,6 +60,8 @@ public final class Retry<T> {
 
         private BackoffRouter backoffRouter = null;
         private RetryAfterExtractor<T> retryAfterExtractor = null;
+        private RetrySwitch retrySwitch = null;
+        private MutableTuning tuning = null;
 
         public Builder<T> name(String name) {
             this.name = Objects.requireNonNull(name);
@@ -193,6 +197,26 @@ public final class Retry<T> {
             return this;
         }
 
+        public Builder<T> backoffRouter(BackoffRouter backoffRouter) {
+            this.backoffRouter = backoffRouter;
+            return this;
+        }
+
+        public Builder<T> retryAfterExtractor(RetryAfterExtractor<T> retryAfterExtractor) {
+            this.retryAfterExtractor = Objects.requireNonNull(retryAfterExtractor, "retryAfterExtractor");
+            return this;
+        }
+
+        public Builder<T> globalSwitch(RetrySwitch retrySwitch) {
+            this.retrySwitch = retrySwitch;
+            return this;
+        }
+
+        public Builder<T> mutableTuning(MutableTuning tuning) {
+            this.tuning = tuning;
+            return this;
+        }
+
         public Builder<T> execute(Supplier<T> supplier) {
             Objects.requireNonNull(supplier, "supplier");
             this.task = supplier::get;
@@ -201,16 +225,6 @@ public final class Retry<T> {
 
         public Builder<T> execute(Callable<T> callable) {
             this.task = Objects.requireNonNull(callable, "callable");
-            return this;
-        }
-
-        public Builder<T> backoffRouter(BackoffRouter backoffRouter) {
-            this.backoffRouter = backoffRouter;
-            return this;
-        }
-
-        public Builder<T> retryAfterExtractor(RetryAfterExtractor<T> retryAfterExtractor) {
-            this.retryAfterExtractor = Objects.requireNonNull(retryAfterExtractor, "retryAfterExtractor");
             return this;
         }
 
