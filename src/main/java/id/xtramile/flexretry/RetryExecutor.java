@@ -3,6 +3,7 @@ package id.xtramile.flexretry;
 import id.xtramile.flexretry.backoff.BackoffRouter;
 import id.xtramile.flexretry.backoff.BackoffStrategy;
 import id.xtramile.flexretry.budget.RetryBudget;
+import id.xtramile.flexretry.bulkhead.Bulkhead;
 import id.xtramile.flexretry.http.RetryAfterExtractor;
 import id.xtramile.flexretry.metrics.RetryMetrics;
 import id.xtramile.flexretry.policy.RetryPolicy;
@@ -48,6 +49,7 @@ public final class RetryExecutor<T> {
     private final RetryAfterExtractor<T> retryAfterExtractor;
     private final RetrySwitch retrySwitch;
     private final MutableTuning tuning;
+    private final Bulkhead bulkhead;
 
     public RetryExecutor(
             String name,
@@ -68,7 +70,8 @@ public final class RetryExecutor<T> {
             BackoffRouter backoffRouter,
             RetryAfterExtractor<T> retryAfterExtractor,
             RetrySwitch retrySwitch,
-            MutableTuning tuning
+            MutableTuning tuning,
+            Bulkhead bulkhead
     ) {
         this.name = Objects.requireNonNull(name, "name");
         this.id = Objects.requireNonNull(id, "id");
@@ -91,6 +94,7 @@ public final class RetryExecutor<T> {
         this.retryAfterExtractor = retryAfterExtractor;
         this.retrySwitch = retrySwitch;
         this.tuning = tuning;
+        this.bulkhead = bulkhead;
     }
 
     public T run() {
@@ -102,6 +106,11 @@ public final class RetryExecutor<T> {
 
         try {
             for (int attempt = 1; ; attempt++) {
+                if (bulkhead != null && !bulkhead.tryAcquire()) {
+                    finalAttempt = Math.max(1, attempt - 1);
+                    throw new RetryException("Bulkhead full; cannot acquire", null, finalAttempt);
+                }
+
                 Duration nextDelay;
 
                 if (lastError != null && backoffRouter != null) {
@@ -173,6 +182,10 @@ public final class RetryExecutor<T> {
                     listeners.onSuccess.accept(result, ctxSuccess);
                     metrics.attemptSucceeded(name, attempt);
 
+                    if (bulkhead != null) {
+                        bulkhead.release();
+                    }
+
                     return result;
 
                 } catch (Throwable e) {
@@ -222,6 +235,10 @@ public final class RetryExecutor<T> {
                         return fallback.apply(lastError);
                     }
 
+                    if (bulkhead != null) {
+                        bulkhead.release();
+                    }
+
                     throw new RetryException("Retry failed after " + attempt + " attempt(s)", lastError, attempt);
                 }
             }
@@ -243,6 +260,10 @@ public final class RetryExecutor<T> {
         } finally {
             int att = (finalAttempt == 0) ? 1 : finalAttempt;
             listeners.onFinally.accept(new RetryContext<>(id, att, att, lastResult, lastError, Duration.ZERO, tags));
+
+            if (bulkhead != null) {
+                bulkhead.release();
+            }
         }
     }
 

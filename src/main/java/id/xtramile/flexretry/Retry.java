@@ -3,6 +3,7 @@ package id.xtramile.flexretry;
 import id.xtramile.flexretry.backoff.BackoffRouter;
 import id.xtramile.flexretry.backoff.BackoffStrategy;
 import id.xtramile.flexretry.budget.RetryBudget;
+import id.xtramile.flexretry.bulkhead.Bulkhead;
 import id.xtramile.flexretry.config.RetryConfig;
 import id.xtramile.flexretry.config.RetryTemplate;
 import id.xtramile.flexretry.http.RetryAfterExtractor;
@@ -62,6 +63,7 @@ public final class Retry<T> {
         private RetryAfterExtractor<T> retryAfterExtractor = null;
         private RetrySwitch retrySwitch = null;
         private MutableTuning tuning = null;
+        private Bulkhead bulkhead = null;
 
         public Builder<T> name(String name) {
             this.name = Objects.requireNonNull(name);
@@ -217,6 +219,11 @@ public final class Retry<T> {
             return this;
         }
 
+        public Builder<T> bulkhead(Bulkhead bulkhead) {
+            this.bulkhead = bulkhead;
+            return this;
+        }
+
         public Builder<T> execute(Supplier<T> supplier) {
             Objects.requireNonNull(supplier, "supplier");
             this.task = supplier::get;
@@ -268,7 +275,8 @@ public final class Retry<T> {
                     stop, backoff, buildPolicy(), listeners,
                     sleeper, clock, budget, metrics,
                     attemptTimeout, attemptExecutor,
-                    task, fallback, backoffRouter, retryAfterExtractor
+                    task, fallback, backoffRouter, retryAfterExtractor,
+                    retrySwitch, tuning, bulkhead
             );
         }
     }
