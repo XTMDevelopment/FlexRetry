@@ -17,6 +17,7 @@ import id.xtramile.flexretry.stop.FixedAttemptsStop;
 import id.xtramile.flexretry.stop.MaxElapsedStop;
 import id.xtramile.flexretry.stop.StopStrategy;
 import id.xtramile.flexretry.time.Clock;
+import id.xtramile.flexretry.trace.TraceContext;
 import id.xtramile.flexretry.tuning.MutableTuning;
 import id.xtramile.flexretry.tuning.RetrySwitch;
 
@@ -62,6 +63,7 @@ public final class RetryExecutor<T> {
     private final Duration cacheTtl;
 
     private final RetryEventBus<T> eventBus;
+    private final TraceContext trace;
 
     public RetryExecutor(
             String name,
@@ -90,7 +92,8 @@ public final class RetryExecutor<T> {
             ResultCache<String, T> cache,
             Function<RetryContext<?>, String> cacheKeyFn,
             Duration cacheTtl,
-            RetryEventBus<T> eventBus
+            RetryEventBus<T> eventBus,
+            TraceContext trace
     ) {
         this.name = Objects.requireNonNull(name, "name");
         this.id = Objects.requireNonNull(id, "id");
@@ -124,6 +127,7 @@ public final class RetryExecutor<T> {
         this.cacheTtl = cacheTtl;
 
         this.eventBus = eventBus;
+        this.trace = trace;
     }
 
     public T run() {
@@ -193,6 +197,10 @@ public final class RetryExecutor<T> {
                     }
 
                     throw new RetryException("Retry exhausted at attempt " + finalAttempt, lastError, finalAttempt);
+                }
+
+                if (trace != null) {
+                    trace.enter(ctxBefore);
                 }
 
                 try {
@@ -338,6 +346,11 @@ public final class RetryExecutor<T> {
                     }
 
                     throw new RetryException("Retry failed after " + attempt + " attempt(s)", lastError, attempt);
+
+                } finally {
+                    if (trace != null) {
+                        trace.exit(ctxBefore);
+                    }
                 }
             }
 
@@ -368,6 +381,8 @@ public final class RetryExecutor<T> {
                 bulkhead.release();
             }
         }
+
+        return lastResult;
     }
 
     private T executeAttempt() throws Exception {

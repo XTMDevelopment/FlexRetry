@@ -17,6 +17,7 @@ import id.xtramile.flexretry.policy.RetryPolicy;
 import id.xtramile.flexretry.sf.SingleFlight;
 import id.xtramile.flexretry.stop.StopStrategy;
 import id.xtramile.flexretry.time.Clock;
+import id.xtramile.flexretry.trace.TraceContext;
 import id.xtramile.flexretry.tuning.MutableTuning;
 import id.xtramile.flexretry.tuning.RetrySwitch;
 
@@ -56,6 +57,7 @@ public final class RetryConfig<T> {
     public final Function<RetryContext<?>, String> cacheKeyFn;
     public final Duration cacheTtl;
     public final RetryEventBus<T> eventBus;
+    public final TraceContext trace;
 
     public RetryConfig(
             String name,
@@ -83,7 +85,8 @@ public final class RetryConfig<T> {
             ResultCache<String, T> cache,
             Function<RetryContext<?>, String> cacheKeyFn,
             Duration cacheTtl,
-            RetryEventBus<T> eventBus
+            RetryEventBus<T> eventBus,
+            TraceContext trace
     ) {
         this.name = Objects.requireNonNull(name);
         this.id = Objects.requireNonNull(id);
@@ -111,6 +114,7 @@ public final class RetryConfig<T> {
         this.cacheKeyFn = cacheKeyFn;
         this.cacheTtl = cacheTtl;
         this.eventBus = eventBus;
+        this.trace = trace;
     }
 
     public T run(Callable<T> task) {
@@ -123,7 +127,7 @@ public final class RetryConfig<T> {
                 retrySwitch, tuning, bulkhead,
                 coalesceBy, singleFlight, lifecycle,
                 cache, cacheKeyFn, cacheTtl,
-                eventBus
+                eventBus, trace
         );
 
         return executor.run();
@@ -139,7 +143,7 @@ public final class RetryConfig<T> {
                 retrySwitch, tuning, bulkhead,
                 coalesceBy, singleFlight, lifecycle,
                 cache, cacheKeyFn, cacheTtl,
-                eventBus
+                eventBus, trace
         );
 
         return CompletableFuture.supplyAsync(exec::run, executor);
