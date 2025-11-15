@@ -17,6 +17,7 @@ import id.xtramile.flexretry.stop.FixedAttemptsStop;
 import id.xtramile.flexretry.stop.MaxElapsedStop;
 import id.xtramile.flexretry.stop.StopStrategy;
 import id.xtramile.flexretry.time.Clock;
+import id.xtramile.flexretry.timeouts.AttemptTimeoutStrategy;
 import id.xtramile.flexretry.trace.TraceContext;
 import id.xtramile.flexretry.tuning.MutableTuning;
 import id.xtramile.flexretry.tuning.RetrySwitch;
@@ -64,6 +65,7 @@ public final class RetryExecutor<T> {
 
     private final RetryEventBus<T> eventBus;
     private final TraceContext trace;
+    private final AttemptTimeoutStrategy attemptTimeouts;
 
     public RetryExecutor(
             String name,
@@ -93,7 +95,8 @@ public final class RetryExecutor<T> {
             Function<RetryContext<?>, String> cacheKeyFn,
             Duration cacheTtl,
             RetryEventBus<T> eventBus,
-            TraceContext trace
+            TraceContext trace,
+            AttemptTimeoutStrategy attemptTimeouts
     ) {
         this.name = Objects.requireNonNull(name, "name");
         this.id = Objects.requireNonNull(id, "id");
@@ -128,6 +131,7 @@ public final class RetryExecutor<T> {
 
         this.eventBus = eventBus;
         this.trace = trace;
+        this.attemptTimeouts = attemptTimeouts;
     }
 
     public T run() {
@@ -208,9 +212,11 @@ public final class RetryExecutor<T> {
 
                     if (coalesceBy != null && singleFlight != null) {
                         String key = coalesceBy.apply(ctxBefore);
-                        result = singleFlight.execute(key, this::executeAttempt);
+                        int temp = attempt;
+                        result = singleFlight.execute(key, () -> executeAttempt(temp));
+
                     } else {
-                        result = executeAttempt();
+                        result = executeAttempt(attempt);
                     }
 
                     lastResult = result;
@@ -385,8 +391,10 @@ public final class RetryExecutor<T> {
         return lastResult;
     }
 
-    private T executeAttempt() throws Exception {
-        if (attemptTimeout == null) {
+    private T executeAttempt(int attemptIdx) throws Exception {
+        Duration perAttempt = attemptTimeouts != null ? attemptTimeouts.timeoutForAttempt(attemptIdx) : attemptTimeout;
+
+        if (perAttempt == null) {
             return task.call();
         }
 

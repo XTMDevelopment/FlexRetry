@@ -17,6 +17,7 @@ import id.xtramile.flexretry.policy.RetryPolicy;
 import id.xtramile.flexretry.sf.SingleFlight;
 import id.xtramile.flexretry.stop.StopStrategy;
 import id.xtramile.flexretry.time.Clock;
+import id.xtramile.flexretry.timeouts.AttemptTimeoutStrategy;
 import id.xtramile.flexretry.trace.TraceContext;
 import id.xtramile.flexretry.tuning.MutableTuning;
 import id.xtramile.flexretry.tuning.RetrySwitch;
@@ -58,6 +59,7 @@ public final class RetryConfig<T> {
     public final Duration cacheTtl;
     public final RetryEventBus<T> eventBus;
     public final TraceContext trace;
+    public final AttemptTimeoutStrategy attemptTimeouts;
 
     public RetryConfig(
             String name,
@@ -86,7 +88,8 @@ public final class RetryConfig<T> {
             Function<RetryContext<?>, String> cacheKeyFn,
             Duration cacheTtl,
             RetryEventBus<T> eventBus,
-            TraceContext trace
+            TraceContext trace,
+            AttemptTimeoutStrategy attemptTimeouts
     ) {
         this.name = Objects.requireNonNull(name);
         this.id = Objects.requireNonNull(id);
@@ -115,6 +118,7 @@ public final class RetryConfig<T> {
         this.cacheTtl = cacheTtl;
         this.eventBus = eventBus;
         this.trace = trace;
+        this.attemptTimeouts = attemptTimeouts;
     }
 
     public T run(Callable<T> task) {
@@ -127,7 +131,7 @@ public final class RetryConfig<T> {
                 retrySwitch, tuning, bulkhead,
                 coalesceBy, singleFlight, lifecycle,
                 cache, cacheKeyFn, cacheTtl,
-                eventBus, trace
+                eventBus, trace, attemptTimeouts
         );
 
         return executor.run();
@@ -143,7 +147,7 @@ public final class RetryConfig<T> {
                 retrySwitch, tuning, bulkhead,
                 coalesceBy, singleFlight, lifecycle,
                 cache, cacheKeyFn, cacheTtl,
-                eventBus, trace
+                eventBus, trace, attemptTimeouts
         );
 
         return CompletableFuture.supplyAsync(exec::run, executor);

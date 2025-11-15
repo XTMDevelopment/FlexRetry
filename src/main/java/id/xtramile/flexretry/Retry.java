@@ -16,6 +16,7 @@ import id.xtramile.flexretry.sf.SingleFlight;
 import id.xtramile.flexretry.stop.FixedAttemptsStop;
 import id.xtramile.flexretry.stop.StopStrategy;
 import id.xtramile.flexretry.time.Clock;
+import id.xtramile.flexretry.timeouts.AttemptTimeoutStrategy;
 import id.xtramile.flexretry.trace.TraceContext;
 import id.xtramile.flexretry.tuning.MutableTuning;
 import id.xtramile.flexretry.tuning.RetrySwitch;
@@ -80,6 +81,7 @@ public final class Retry<T> {
 
         private RetryEventBus<T> eventBus = null;
         private TraceContext trace = null;
+        private AttemptTimeoutStrategy attemptTimeouts = null;
 
         public Builder<T> name(String name) {
             this.name = Objects.requireNonNull(name);
@@ -272,6 +274,11 @@ public final class Retry<T> {
             return this;
         }
 
+        public Builder<T> attemptTimeouts(AttemptTimeoutStrategy strategy) {
+            this.attemptTimeouts = strategy;
+            return this;
+        }
+
         public Builder<T> execute(Supplier<T> supplier) {
             Objects.requireNonNull(supplier, "supplier");
             this.task = supplier::get;
@@ -301,7 +308,7 @@ public final class Retry<T> {
                     retrySwitch, tuning, bulkhead,
                     coalesceBy, singleFlight, lifecycle,
                     cache, cacheKeyFn, cacheTtl,
-                    eventBus, trace
+                    eventBus, trace, attemptTimeouts
             );
         }
 
@@ -332,7 +339,7 @@ public final class Retry<T> {
                     retrySwitch, tuning, bulkhead,
                     coalesceBy, singleFlight, lifecycle,
                     cache, cacheKeyFn, cacheTtl,
-                    eventBus, trace
+                    eventBus, trace, attemptTimeouts
             );
         }
     }
