@@ -20,6 +20,7 @@ import id.xtramile.flexretry.timeouts.AttemptTimeoutStrategy;
 import id.xtramile.flexretry.trace.TraceContext;
 import id.xtramile.flexretry.tuning.MutableTuning;
 import id.xtramile.flexretry.tuning.RetrySwitch;
+import id.xtramile.flexretry.window.RetryWindow;
 
 import java.time.Duration;
 import java.util.*;
@@ -126,6 +127,11 @@ public final class Retry<T> {
 
         public Builder<T> retryIf(Predicate<T> predicate) {
             this.policies.add(new ResultPredicateRetryPolicy<>(Objects.requireNonNull(predicate, "predicate")));
+            return this;
+        }
+
+        public Builder<T> retryOnlyWhen(RetryWindow window) {
+            this.policies.add(new WindowPolicy<>(window, this.clock));
             return this;
         }
 
