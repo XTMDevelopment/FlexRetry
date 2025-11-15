@@ -1,4 +1,4 @@
-package id.xtramile.flexretry;
+package id.xtramile.flexretry.backoff;
 
 import java.time.Duration;
 import java.util.concurrent.ThreadLocalRandom;
@@ -29,7 +29,7 @@ public interface BackoffStrategy {
 
             long randomized = ThreadLocalRandom.current().nextLong(low, Math.max(low + 1, high));
             return Duration.ofMillis(randomized);
-        }
+        };
     }
 
     static BackoffStrategy fixed(Duration delay) {
@@ -62,6 +62,6 @@ public interface BackoffStrategy {
             }
 
             return Duration.ofMillis(ms);
-        }
+        };
     }
 }

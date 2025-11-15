@@ -1,7 +1,5 @@
 package id.xtramile.flexretry.backoff;
 
-import id.xtramile.flexretry.BackoffStrategy;
-
 import java.time.Duration;
 
 /**

@@ -1,112 +1,218 @@
 package id.xtramile.flexretry;
 
+import id.xtramile.flexretry.backoff.BackoffStrategy;
+import id.xtramile.flexretry.budget.RetryBudget;
+import id.xtramile.flexretry.metrics.RetryMetrics;
 import id.xtramile.flexretry.policy.RetryPolicy;
+import id.xtramile.flexretry.stop.StopStrategy;
+import id.xtramile.flexretry.time.Clock;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.Callable;
+import java.util.concurrent.*;
+import java.util.function.Function;
 
 /**
  * Runs the attempt loop using a policy + backoff + listeners
  */
 public final class RetryExecutor<T> {
-    private final int maxAttempts;
+    private final String name;
+    private final String id;
+    private final Map<String, Object> tags;
+
+    private final StopStrategy stop;
     private final BackoffStrategy backoff;
     private final RetryPolicy<T> policy;
     private final RetryListeners<T> listeners;
     private final Sleeper sleeper;
+    private final Clock clock;
+    private final RetryBudget budget;
+    private final RetryMetrics metrics;
 
-    public RetryExecutor(int maxAttempts, BackoffStrategy backoff, RetryPolicy<T> policy, RetryListeners<T> listeners, Sleeper sleeper) {
-        if (maxAttempts < 1) {
-            throw new IllegalArgumentException("maxAttempts must be >= 1");
-        }
+    private final Duration attemptTimeout;
+    private final ExecutorService attemptExecutor;
+    private final Callable<T> task;
+    private final Function<Throwable, T> fallback;
 
-        this.maxAttempts = maxAttempts;
+    public RetryExecutor(
+            String name,
+            String id,
+            Map<String, Object> tags,
+            StopStrategy stop,
+            BackoffStrategy backoff,
+            RetryPolicy<T> policy,
+            RetryListeners<T> listeners,
+            Sleeper sleeper,
+            Clock clock,
+            RetryBudget budget,
+            RetryMetrics metrics,
+            Duration attemptTimeout,
+            ExecutorService attemptExecutor,
+            Callable<T> task,
+            Function<Throwable, T> fallback
+    ) {
+        this.name = Objects.requireNonNull(name, "name");
+        this.id = Objects.requireNonNull(id, "id");
+        this.tags = tags == null ? Map.of() : tags;
+
+        this.stop = Objects.requireNonNull(stop, "stop");
         this.backoff = Objects.requireNonNull(backoff, "backoff");
         this.policy = Objects.requireNonNull(policy, "policy");
         this.listeners = Objects.requireNonNullElseGet(listeners, RetryListeners::new);
         this.sleeper = Objects.requireNonNullElseGet(sleeper, Sleeper::system);
+        this.clock = Objects.requireNonNullElseGet(clock, Clock::system);
+        this.budget = Objects.requireNonNullElseGet(budget, RetryBudget::unlimited);
+        this.metrics = Objects.requireNonNullElseGet(metrics, RetryMetrics::noop);
+
+        this.attemptTimeout = attemptTimeout;
+        this.attemptExecutor = attemptExecutor;
+        this.task = Objects.requireNonNull(task, "task");
+        this.fallback = fallback;
     }
 
-    public T run(Callable<T> task) {
-        Objects.requireNonNull(task, "task");
-
+    public T run() {
         T lastResult = null;
         Throwable lastError = null;
         int finalAttempt = 0;
 
-        try {
-            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-                Duration nextDelay = (attempt < maxAttempts) ? backoff.delayForAttempt(attempt) : Duration.ZERO;
-                RetryContext<T> ctxBefore = new RetryContext<>(attempt, maxAttempts, lastResult, lastError, nextDelay);
+        long start = clock.nanoTime();
 
-                safeRun(() -> listeners.onAttempt.accept(ctxBefore));
+        try {
+            for (int attempt = 1; ; attempt++) {
+                Duration nextDelay = backoff.delayForAttempt(attempt);
+                RetryContext<T> ctxBefore = new RetryContext<>(id, attempt, Integer.MAX_VALUE, lastResult, lastError, nextDelay, tags);
+
+                listeners.onAttempt.accept(ctxBefore);
+                metrics.attemptStarted(name, attempt);
+
+                long now = clock.nanoTime();
+                if (stop.shouldStop(attempt, start, now, nextDelay) && attempt > 1) {
+                    finalAttempt = attempt - 1;
+
+                    RetryContext<T> ctxFail = new RetryContext<>(id, finalAttempt, finalAttempt, lastResult, lastError, Duration.ZERO, tags);
+                    listeners.onFailure.accept(lastError, ctxFail);
+                    metrics.exhausted(name, finalAttempt, lastError);
+
+                    if (fallback != null) {
+                        listeners.onRecover.accept(ctxFail);
+                        return fallback.apply(lastError);
+                    }
+
+                    throw new RetryException("Retry exhausted at attempt " + finalAttempt, lastError, finalAttempt);
+                }
 
                 try {
-                    T result = task.call();
+                    T result = executeAttempt();
                     lastResult = result;
                     lastError = null;
 
-                    boolean shouldRetry = policy.shouldRetry(result, null, attempt, maxAttempts);
-                    if (shouldRetry) {
-                        if (attempt < maxAttempts) {
-                            sleep(nextDelay);
-                            continue;
-
-                        } else {
+                    boolean again = policy.shouldRetry(result, null, attempt, Integer.MAX_VALUE);
+                    if (again) {
+                        if (!budget.tryAcquire()) {
                             finalAttempt = attempt;
-                            safeRun(() -> listeners.onFailure.accept(null,
-                                    new RetryContext<>(attempt, maxAttempts, result, null, Duration.ZERO)));
 
-                            throw new RetryException("Retry exhausted: result did not meet success condition", null, attempt);
+                            RetryContext<T> ctxFail = new RetryContext<>(id, finalAttempt, finalAttempt, result, null, Duration.ZERO, tags);
+                            listeners.onFailure.accept(null, ctxFail);
+                            metrics.exhausted(name, finalAttempt, null);
+
+                            if (fallback != null) {
+                                listeners.onRecover.accept(ctxFail);
+                                return fallback.apply(null);
+                            }
+
+                            throw new RetryException("Retry denied by budget at attempt " + attempt, null, attempt);
                         }
+
+                        Duration adjusted = listeners.beforeSleep.apply(nextDelay, ctxBefore);
+                        sleeper.sleep(adjusted);
+                        continue;
                     }
 
                     finalAttempt = attempt;
-                    safeRun(() -> listeners.onSuccess.accept(result,
-                            new RetryContext<>(attempt, maxAttempts, result, null, Duration.ZERO)));
+
+                    RetryContext<T> ctxSuccess = new RetryContext<>(id, attempt, attempt, result, null, Duration.ZERO, tags);
+                    listeners.onSuccess.accept(result, ctxSuccess);
+                    metrics.attemptSucceeded(name, attempt);
 
                     return result;
 
                 } catch (Throwable e) {
                     lastError = unwrap(e);
 
-                    boolean shouldRetry = policy.shouldRetry(null, lastError, attempt, maxAttempts);
-                    if (shouldRetry && attempt < maxAttempts) {
-                        sleep(nextDelay);
+                    listeners.afterAttemptFailure.accept(lastError, ctxBefore);
+
+                    boolean again = policy.shouldRetry(null, lastError, attempt, Integer.MAX_VALUE);
+                    if (again) {
+                        if (!budget.tryAcquire()) {
+                            finalAttempt = attempt;
+
+                            RetryContext<T> ctxFail = new RetryContext<>(id, finalAttempt, finalAttempt, lastResult, lastError, Duration.ZERO, tags);
+                            listeners.onFailure.accept(lastError, ctxFail);
+                            metrics.exhausted(name, finalAttempt, lastError);
+
+                            if (fallback != null) {
+                                listeners.onRecover.accept(ctxFail);
+                                return fallback.apply(lastError);
+                            }
+
+                            throw new RetryException("Retry denied by budget at attempt " + attempt, lastError, attempt);
+                        }
+
+                        Duration adjusted = listeners.beforeSleep.apply(nextDelay, ctxBefore);
+                        sleeper.sleep(adjusted);
                         continue;
                     }
 
                     finalAttempt = attempt;
-                    Throwable finalErr = lastError;
-                    safeRun(() -> listeners.onFailure.accept(finalErr,
-                            new RetryContext<>(attempt, maxAttempts, lastResult, finalErr, Duration.ZERO)));
 
-                    throw new RetryException("Retry failed after " + attempt + " attempt(s)", finalErr, attempt);
+                    RetryContext<T> ctxFail = new RetryContext<>(id, finalAttempt, finalAttempt, lastResult, lastError, Duration.ZERO, tags);
+                    listeners.onFailure.accept(lastError, ctxFail);
+                    metrics.attemptFailed(name, finalAttempt, lastError);
+
+                    if (fallback != null) {
+                        listeners.onRecover.accept(ctxFail);
+                        return fallback.apply(lastError);
+                    }
+
+                    throw new RetryException("Retry failed after " + attempt + " attempt(s)", lastError, attempt);
                 }
             }
 
-            throw new IllegalStateException("Unexpected retry state");
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+
+            finalAttempt = Math.max(1, finalAttempt);
+
+            RetryContext<T> ctxFail = new RetryContext<>(id, finalAttempt, finalAttempt, lastResult, ie, Duration.ZERO, tags);
+            listeners.onFailure.accept(null, ctxFail);
+            metrics.attemptFailed(name, finalAttempt, ie);
+
+            if (fallback != null) {
+                listeners.onRecover.accept(ctxFail);
+                return fallback.apply(ie);
+            }
 
         } finally {
             int att = (finalAttempt == 0) ? 1 : finalAttempt;
-            safeRun(() -> listeners.onFinally.accept(new RetryContext<>(att, maxAttempts, lastResult, lastError, Duration.ZERO)));
+            listeners.onFinally.accept(new RetryContext<>(id, att, att, lastResult, lastError, Duration.ZERO, tags));
         }
     }
 
-    private static void sleep(Duration duration) {
-        try {
-            Sleeper.system().sleep(duration);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Interrupted during backoff sleep", e);
+    private T executeAttempt() throws Exception {
+        if (attemptTimeout == null) {
+            return task.call();
         }
-    }
 
-    private static void safeRun(Runnable runnable) {
+        ExecutorService exec = attemptExecutor != null ? attemptExecutor : ForkJoinPool.commonPool();
+        Future<T> future = exec.submit(task);
+
         try {
-            runnable.run();
-        } catch (Throwable ignore) {}
+            return future.get(attemptTimeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException te) {
+            future.cancel(true);
+            throw te;
+        }
     }
 
     private static Throwable unwrap(Throwable throwable) {

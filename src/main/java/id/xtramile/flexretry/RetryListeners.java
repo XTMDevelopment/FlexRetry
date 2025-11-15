@@ -1,6 +1,8 @@
 package id.xtramile.flexretry;
 
+import java.time.Duration;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 /**
@@ -11,6 +13,13 @@ public final class RetryListeners<T> {
     public BiConsumer<T, RetryContext<T>> onSuccess = (result, ctx) -> {};
     public BiConsumer<Throwable, RetryContext<T>> onFailure = (ex, ctx) -> {};
     public Consumer<RetryContext<T>> onFinally = ctx -> {};
+
+    public BiFunction<Duration, RetryContext<T>, Duration> beforeSleep = (duration, ctx) -> duration;
+
+    public BiConsumer<T, RetryContext<T>> afterAttemptSuccess = (result, ctx) -> {};
+    public BiConsumer<Throwable, RetryContext<T>> afterAttemptFailure = (ex, ctx) -> {};
+
+    public Consumer<RetryContext<T>> onRecover = ctx -> {};
 
     public RetryListeners() {}
 

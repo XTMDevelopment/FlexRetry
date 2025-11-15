@@ -1,23 +1,41 @@
 package id.xtramile.flexretry;
 
 import java.time.Duration;
+import java.util.Collections;
+import java.util.Map;
 
 /**
  * Immutable snapshot passed to callbacks.
  */
 public final class RetryContext<T> {
+    private final String id;
     private final int attempt;
     private final int maxAttempts;
     private final T lastResult;
     private final Throwable lastError;
     private final Duration nextDelay;
+    private final Map<String, Object> tags;
 
-    public RetryContext(int attempt, int maxAttempts, T lastResult, Throwable lastError, Duration nextDelay) {
+    public RetryContext(
+            String id,
+            int attempt,
+            int maxAttempts,
+            T lastResult,
+            Throwable lastError,
+            Duration nextDelay,
+            Map<String, Object> tags
+    ) {
+        this.id = id;
         this.attempt = attempt;
         this.maxAttempts = maxAttempts;
         this.lastResult = lastResult;
         this.lastError = lastError;
         this.nextDelay = nextDelay == null ? Duration.ZERO : nextDelay;
+        this.tags = tags == null ? Map.of() : Collections.unmodifiableMap(tags);
+    }
+
+    public String id() {
+        return id;
     }
 
     public int attempt() {
@@ -38,5 +56,9 @@ public final class RetryContext<T> {
 
     public Duration nextDelay() {
         return nextDelay;
+    }
+
+    public Map<String, Object> tags() {
+        return tags;
     }
 }
