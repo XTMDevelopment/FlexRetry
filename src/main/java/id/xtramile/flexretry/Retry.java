@@ -5,6 +5,7 @@ import id.xtramile.flexretry.backoff.BackoffStrategy;
 import id.xtramile.flexretry.budget.RetryBudget;
 import id.xtramile.flexretry.config.RetryConfig;
 import id.xtramile.flexretry.config.RetryTemplate;
+import id.xtramile.flexretry.http.RetryAfterExtractor;
 import id.xtramile.flexretry.metrics.RetryMetrics;
 import id.xtramile.flexretry.policy.*;
 import id.xtramile.flexretry.stop.FixedAttemptsStop;
@@ -56,6 +57,7 @@ public final class Retry<T> {
         private Function<Throwable, T> fallback = null;
 
         private BackoffRouter backoffRouter = null;
+        private RetryAfterExtractor<T> retryAfterExtractor = null;
 
         public Builder<T> name(String name) {
             this.name = Objects.requireNonNull(name);
@@ -207,6 +209,11 @@ public final class Retry<T> {
             return this;
         }
 
+        public Builder<T> retryAfterExtractor(RetryAfterExtractor<T> retryAfterExtractor) {
+            this.retryAfterExtractor = Objects.requireNonNull(retryAfterExtractor, "retryAfterExtractor");
+            return this;
+        }
+
         public RetryPolicy<T> buildPolicy() {
             if (policies.isEmpty()) {
                 return (result, error, attempt, maxAttempts) -> false;
@@ -247,7 +254,7 @@ public final class Retry<T> {
                     stop, backoff, buildPolicy(), listeners,
                     sleeper, clock, budget, metrics,
                     attemptTimeout, attemptExecutor,
-                    task, fallback
+                    task, fallback, backoffRouter, retryAfterExtractor
             );
         }
     }

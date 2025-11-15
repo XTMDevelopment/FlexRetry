@@ -3,6 +3,7 @@ package id.xtramile.flexretry;
 import id.xtramile.flexretry.backoff.BackoffRouter;
 import id.xtramile.flexretry.backoff.BackoffStrategy;
 import id.xtramile.flexretry.budget.RetryBudget;
+import id.xtramile.flexretry.http.RetryAfterExtractor;
 import id.xtramile.flexretry.metrics.RetryMetrics;
 import id.xtramile.flexretry.policy.RetryPolicy;
 import id.xtramile.flexretry.stop.StopStrategy;
@@ -37,6 +38,7 @@ public final class RetryExecutor<T> {
     private final Function<Throwable, T> fallback;
 
     private final BackoffRouter backoffRouter;
+    private final RetryAfterExtractor<T> retryAfterExtractor;
 
     public RetryExecutor(
             String name,
@@ -54,7 +56,8 @@ public final class RetryExecutor<T> {
             ExecutorService attemptExecutor,
             Callable<T> task,
             Function<Throwable, T> fallback,
-            BackoffRouter backoffRouter
+            BackoffRouter backoffRouter,
+            RetryAfterExtractor<T> retryAfterExtractor
     ) {
         this.name = Objects.requireNonNull(name, "name");
         this.id = Objects.requireNonNull(id, "id");
@@ -74,6 +77,7 @@ public final class RetryExecutor<T> {
         this.task = Objects.requireNonNull(task, "task");
         this.fallback = fallback;
         this.backoffRouter = backoffRouter;
+        this.retryAfterExtractor = retryAfterExtractor;
     }
 
     public T run() {
@@ -136,7 +140,16 @@ public final class RetryExecutor<T> {
                             throw new RetryException("Retry denied by budget at attempt " + attempt, null, attempt);
                         }
 
-                        Duration adjusted = listeners.beforeSleep.apply(nextDelay, ctxBefore);
+                        Duration adjusted = nextDelay;
+                        if (retryAfterExtractor != null) {
+                            Duration hint = retryAfterExtractor.extract(lastError, lastResult);
+
+                            if (hint != null) {
+                                adjusted = hint;
+                            }
+                        }
+
+                        adjusted = listeners.beforeSleep.apply(adjusted, ctxBefore);
                         sleeper.sleep(adjusted);
                         continue;
                     }
@@ -171,7 +184,16 @@ public final class RetryExecutor<T> {
                             throw new RetryException("Retry denied by budget at attempt " + attempt, lastError, attempt);
                         }
 
-                        Duration adjusted = listeners.beforeSleep.apply(nextDelay, ctxBefore);
+                        Duration adjusted = nextDelay;
+                        if (retryAfterExtractor != null) {
+                            Duration hint = retryAfterExtractor.extract(lastError, lastResult);
+
+                            if (hint != null) {
+                                adjusted = hint;
+                            }
+                        }
+
+                        adjusted = listeners.beforeSleep.apply(adjusted, ctxBefore);
                         sleeper.sleep(adjusted);
                         continue;
                     }
