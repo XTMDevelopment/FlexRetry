@@ -6,6 +6,7 @@
     <artifactId>flexretry-parent</artifactId>
     <version>1.0</version>
     <inceptionYear>2025</inceptionYear>
+    <packaging>pom</packaging>
 
     <name>Flexible Retry Parent</name>
     <description>Parent project for the Flexible Retry library modules</description>

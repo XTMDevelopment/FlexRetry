@@ -1,7 +1,7 @@
 package id.xtramile.flexretry;
 
 import java.time.Duration;
-import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -31,7 +31,7 @@ public final class RetryContext<T> {
         this.lastResult = lastResult;
         this.lastError = lastError;
         this.nextDelay = nextDelay == null ? Duration.ZERO : nextDelay;
-        this.tags = tags == null ? Map.of() : Collections.unmodifiableMap(tags);
+        this.tags = tags == null ? new HashMap<>() : tags;
     }
 
     public String id() {
