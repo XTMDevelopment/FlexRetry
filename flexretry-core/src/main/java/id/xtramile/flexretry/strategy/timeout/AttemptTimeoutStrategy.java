@@ -3,17 +3,13 @@ package id.xtramile.flexretry.strategy.timeout;
 import java.time.Duration;
 
 public interface AttemptTimeoutStrategy {
-    static Duration fixed(Duration duration) {
-        return attempt -> duration;
+
+    static AttemptTimeoutStrategy fixed(Duration duration) {
+        return new FixedTimeout(duration);
     }
 
     static AttemptTimeoutStrategy exponential(Duration initial, double multiplier, Duration cap) {
-        return attempt -> {
-            long ms = Math.round(initial.toMillis() * Math.pow(multiplier, Math.max(0, attempt - 1)));
-            Duration duration = Duration.ofMillis(ms);
-
-            return duration.compareTo(cap) > 0 ? cap : duration;
-        };
+        return new ExponentialTimeout(initial, multiplier, cap);
     }
 
     Duration timeoutForAttempt(int attempt);

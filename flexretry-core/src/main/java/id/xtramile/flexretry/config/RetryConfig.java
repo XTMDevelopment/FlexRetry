@@ -1,20 +1,9 @@
 package id.xtramile.flexretry.config;
 
-import id.xtramile.flexretry.RetryContext;
 import id.xtramile.flexretry.RetryExecutor;
 import id.xtramile.flexretry.RetryListeners;
 import id.xtramile.flexretry.Sleeper;
-import id.xtramile.flexretry.control.budget.RetryBudget;
-import id.xtramile.flexretry.control.bulkhead.Bulkhead;
-import id.xtramile.flexretry.control.cache.ResultCache;
-import id.xtramile.flexretry.control.sf.SingleFlight;
-import id.xtramile.flexretry.control.tuning.MutableTuning;
-import id.xtramile.flexretry.control.tuning.RetrySwitch;
-import id.xtramile.flexretry.integrations.http.RetryAfterExtractor;
 import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
-import id.xtramile.flexretry.observability.events.RetryEventBus;
-import id.xtramile.flexretry.observability.metrics.RetryMetrics;
-import id.xtramile.flexretry.observability.trace.TraceContext;
 import id.xtramile.flexretry.strategy.backoff.BackoffRouter;
 import id.xtramile.flexretry.strategy.backoff.BackoffStrategy;
 import id.xtramile.flexretry.strategy.policy.RetryPolicy;
@@ -53,20 +42,7 @@ public final class RetryConfig<T> {
     public final RetryListeners<T> listeners;
     public final Sleeper sleeper;
     public final Clock clock;
-    public final RetryBudget budget;
-    public final RetryMetrics metrics;
-    public final RetryAfterExtractor<T> retryAfterExtractor;
-    public final RetrySwitch retrySwitch;
-    public final MutableTuning tuning;
-    public final Bulkhead bulkhead;
-    public final SingleFlight<T> singleFlight;
-    public final Function<RetryContext<?>, String> coalesceBy;
     public final AttemptLifecycle<T> lifecycle;
-    public final ResultCache<String, T> cache;
-    public final Function<RetryContext<?>, String> cacheKeyFn;
-    public final Duration cacheTtl;
-    public final RetryEventBus<T> eventBus;
-    public final TraceContext trace;
 
     // ---- Fallback ----
     public final Function<Throwable, T> fallback;
@@ -80,21 +56,13 @@ public final class RetryConfig<T> {
             RetryPolicy<T> policy,
             // infra core
             RetryListeners<T> listeners, Sleeper sleeper, Clock clock,
-            RetryBudget budget, RetryMetrics metrics,
             // fixed timeouts/executor
             Duration attemptTimeout, ExecutorService attemptExecutor,
             // task-independent extras
             Function<Throwable, T> fallback,
             // advanced feature params
             BackoffRouter backoffRouter,
-            RetryAfterExtractor<T> retryAfterExtractor,
-            RetrySwitch retrySwitch, MutableTuning tuning,
-            Bulkhead bulkhead,
-            SingleFlight<T> singleFlight, Function<RetryContext<?>, String> coalesceBy,
             AttemptLifecycle<T> lifecycle,
-            ResultCache<String, T> cache, Function<RetryContext<?>, String> cacheKeyFn, Duration cacheTtl,
-            RetryEventBus<T> eventBus,
-            TraceContext trace,
             AttemptTimeoutStrategy attemptTimeouts
     ) {
         // identity
@@ -113,8 +81,6 @@ public final class RetryConfig<T> {
         this.listeners = Objects.requireNonNullElseGet(listeners, RetryListeners::new);
         this.sleeper = Objects.requireNonNullElseGet(sleeper, Sleeper::system);
         this.clock = Objects.requireNonNullElseGet(clock, Clock::system);
-        this.budget = Objects.requireNonNullElseGet(budget, RetryBudget::unlimited);
-        this.metrics = Objects.requireNonNullElseGet(metrics, RetryMetrics::noop);
 
         // timeouts/executor
         this.attemptTimeout = attemptTimeout;
@@ -125,18 +91,7 @@ public final class RetryConfig<T> {
 
         // advanced
         this.backoffRouter = backoffRouter;
-        this.retryAfterExtractor = retryAfterExtractor;
-        this.retrySwitch = retrySwitch;
-        this.tuning = tuning;
-        this.bulkhead = bulkhead;
-        this.singleFlight = singleFlight;
-        this.coalesceBy = coalesceBy;
         this.lifecycle = lifecycle;
-        this.cache = cache;
-        this.cacheKeyFn = cacheKeyFn;
-        this.cacheTtl = cacheTtl;
-        this.eventBus = eventBus;
-        this.trace = trace;
         this.attemptTimeouts = attemptTimeouts;
     }
 
@@ -144,15 +99,13 @@ public final class RetryConfig<T> {
         RetryExecutor<T> executor = new RetryExecutor<>(
                 name, id, tags,
                 stop, backoff,
-                policy, listeners,
-                sleeper, clock, budget, metrics,
+                policy,
+                listeners, sleeper, clock,
                 attemptTimeout, attemptExecutor,
                 task, fallback,
-                backoffRouter, retryAfterExtractor,
-                retrySwitch, tuning, bulkhead,
-                singleFlight, coalesceBy, lifecycle,
-                cache, cacheKeyFn, cacheTtl,
-                eventBus, trace, attemptTimeouts
+                backoffRouter,
+                lifecycle,
+                attemptTimeouts
         );
 
         return executor.run();

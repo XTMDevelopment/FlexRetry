@@ -2,21 +2,10 @@ package id.xtramile.flexretry;
 
 import id.xtramile.flexretry.config.RetryConfig;
 import id.xtramile.flexretry.config.RetryTemplate;
-import id.xtramile.flexretry.control.budget.RetryBudget;
-import id.xtramile.flexretry.control.bulkhead.Bulkhead;
-import id.xtramile.flexretry.control.cache.ResultCache;
-import id.xtramile.flexretry.control.health.HealthProbe;
-import id.xtramile.flexretry.control.sf.SingleFlight;
-import id.xtramile.flexretry.control.tuning.DynamicTuning;
-import id.xtramile.flexretry.control.tuning.MutableTuning;
-import id.xtramile.flexretry.control.tuning.RetrySwitch;
-import id.xtramile.flexretry.integrations.http.RetryAfterExtractor;
 import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
-import id.xtramile.flexretry.observability.events.RetryEventBus;
-import id.xtramile.flexretry.observability.metrics.RetryMetrics;
-import id.xtramile.flexretry.observability.trace.TraceContext;
 import id.xtramile.flexretry.strategy.backoff.BackoffRouter;
 import id.xtramile.flexretry.strategy.backoff.BackoffStrategy;
+import id.xtramile.flexretry.strategy.backoff.FixedBackoff;
 import id.xtramile.flexretry.strategy.policy.*;
 import id.xtramile.flexretry.strategy.stop.FixedAttemptsStop;
 import id.xtramile.flexretry.strategy.stop.StopStrategy;
@@ -48,45 +37,31 @@ public final class Retry<T> {
 
     public static final class Builder<T> {
 
-        private final Map<String, Object> tags = new HashMap<>();
-        // ---------- Policies ----------
-        private final List<RetryPolicy<T>> policies = new ArrayList<>();
-        // ---------- Infra ----------
-        private final RetryListeners<T> listeners = new RetryListeners<>();
         // ---------- Identity / tags ----------
         private String name = "retry";
         private String id = UUID.randomUUID().toString();
+        private final Map<String, Object> tags = new HashMap<>();
+
         // ---------- Stop / timing ----------
         private StopStrategy stop = new FixedAttemptsStop(3);
-        private BackoffStrategy backoff = BackoffStrategy.fixed(Duration.ZERO);
+        private BackoffStrategy backoff = new FixedBackoff(Duration.ZERO);
         private BackoffRouter backoffRouter = null;
         private AttemptTimeoutStrategy attemptTimeouts = null;
         private Duration attemptTimeout = null;
         private ExecutorService attemptExecutor = null;
+
+        // ---------- Policies ----------
+        private final List<RetryPolicy<T>> policies = new ArrayList<>();
+
+        // ---------- Infra ----------
+        private final RetryListeners<T> listeners = new RetryListeners<>();
         private Sleeper sleeper = Sleeper.system();
         private Clock clock = Clock.system();
-        private RetryBudget budget = RetryBudget.unlimited();
-        private RetryMetrics metrics = RetryMetrics.noop();
-        private RetryAfterExtractor<T> retryAfterExtractor = null;
-        private RetrySwitch retrySwitch = null;
-        private MutableTuning tuning = null;
-        private Bulkhead bulkhead = null;
-        private SingleFlight<T> singleFlight = null;
-        private Function<RetryContext<?>, String> coalesceBy = null;
         private AttemptLifecycle<T> lifecycle = null;
-        private ResultCache<String, T> cache = null;
-        private Function<RetryContext<?>, String> cacheKeyFn = null;
-        private Duration cacheTtl = null;
-        private RetryEventBus<T> eventBus = null;
-        private TraceContext trace = null;
 
         // ---------- Task / fallback ----------
         private Callable<T> task;
         private Function<Throwable, T> fallback = null;
-
-        // ---------- Health / dynamic tuning ----------
-        private HealthProbe healthProbe = null;
-        private DynamicTuning dynamicTuning = null;
 
         // ======== Fluent configuration ========
 
@@ -118,7 +93,7 @@ public final class Retry<T> {
         }
 
         public Builder<T> delayMillis(long millis) {
-            this.backoff = BackoffStrategy.fixed(Duration.ofMillis(Math.max(0L, millis)));
+            this.backoff = new FixedBackoff(Duration.ofMillis(Math.max(0L, millis)));
             return this;
         }
 
@@ -180,14 +155,32 @@ public final class Retry<T> {
             return this;
         }
 
+        public Builder<T> afterAttemptSuccess(BiConsumer<T, RetryContext<T>> consumer) {
+            listeners.afterAttemptSuccess = consumer;
+            return this;
+        }
+
+        public Builder<T> afterAttemptFailure(BiConsumer<Throwable, RetryContext<T>> consumer) {
+            listeners.afterAttemptFailure = consumer;
+            return this;
+        }
+
         public Builder<T> onSuccess(BiConsumer<T, RetryContext<T>> consumer) {
             listeners.onSuccess(consumer);
             return this;
         }
 
+        public Builder<T> onSuccess(Consumer<T> consumer) {
+            return onSuccess((result, ctx) -> consumer.accept(result));
+        }
+
         public Builder<T> onFailure(BiConsumer<Throwable, RetryContext<T>> consumer) {
             listeners.onFailure(consumer);
             return this;
+        }
+
+        public Builder<T> onFailure(Consumer<Throwable> consumer) {
+            return onFailure((exception, ctx) -> consumer.accept(exception));
         }
 
         public Builder<T> onFinally(Consumer<RetryContext<T>> consumer) {
@@ -200,28 +193,9 @@ public final class Retry<T> {
             return this;
         }
 
-        public Builder<T> afterAttemptSuccess(BiConsumer<T, RetryContext<T>> consumer) {
-            listeners.afterAttemptSuccess = consumer;
+        public Builder<T> lifecycle(AttemptLifecycle<T> lifecycle) {
+            this.lifecycle = lifecycle;
             return this;
-        }
-
-        public Builder<T> afterAttemptFailure(BiConsumer<Throwable, RetryContext<T>> consumer) {
-            listeners.afterAttemptFailure = consumer;
-            return this;
-        }
-
-        public Builder<T> onRecover(Consumer<RetryContext<T>> consumer) {
-            listeners.onRecover = consumer;
-            return this;
-        }
-
-        // Hook sugars
-        public Builder<T> onSuccess(Consumer<T> consumer) {
-            return onSuccess((result, ctx) -> consumer.accept(result));
-        }
-
-        public Builder<T> onFailure(Consumer<Throwable> consumer) {
-            return onFailure((exception, ctx) -> consumer.accept(exception));
         }
 
         // Infra injection
@@ -232,79 +206,6 @@ public final class Retry<T> {
 
         Builder<T> clock(Clock clock) {
             this.clock = Objects.requireNonNull(clock, "clock");
-            return this;
-        }
-
-        public Builder<T> budget(RetryBudget budget) {
-            this.budget = Objects.requireNonNull(budget, "budget");
-            return this;
-        }
-
-        public Builder<T> metrics(RetryMetrics metrics) {
-            this.metrics = Objects.requireNonNull(metrics, "metrics");
-            return this;
-        }
-
-        public Builder<T> retryAfter(RetryAfterExtractor<T> retryAfterExtractor) {
-            this.retryAfterExtractor = Objects.requireNonNull(retryAfterExtractor, "retryAfterExtractor");
-            return this;
-        }
-
-        public Builder<T> globalSwitch(RetrySwitch retrySwitch) {
-            this.retrySwitch = retrySwitch;
-            return this;
-        }
-
-        public Builder<T> mutableTuning(MutableTuning tuning) {
-            this.tuning = tuning;
-            return this;
-        }
-
-        public Builder<T> bulkhead(Bulkhead bulkhead) {
-            this.bulkhead = bulkhead;
-            return this;
-        }
-
-        public Builder<T> singleFlight(SingleFlight<T> singleFlight) {
-            this.singleFlight = singleFlight;
-            return this;
-        }
-
-        public Builder<T> coalesceBy(Function<RetryContext<?>, String> coalesceBy) {
-            this.coalesceBy = coalesceBy;
-            return this;
-        }
-
-        public Builder<T> lifecycle(AttemptLifecycle<T> lifecycle) {
-            this.lifecycle = lifecycle;
-            return this;
-        }
-
-        public Builder<T> cache(ResultCache<String, T> cache, Function<RetryContext<?>, String> keyFn, Duration ttl) {
-            this.cache = cache;
-            this.cacheKeyFn = keyFn;
-            this.cacheTtl = ttl;
-            return this;
-        }
-
-        public Builder<T> eventBus(RetryEventBus<T> bus) {
-            this.eventBus = bus;
-            return this;
-        }
-
-        public Builder<T> trace(TraceContext trace) {
-            this.trace = trace;
-            return this;
-        }
-
-        // Health / dynamic tuning
-        public Builder<T> healthProbe(HealthProbe healthProbe) {
-            this.healthProbe = healthProbe;
-            return this;
-        }
-
-        public Builder<T> dynamicTuning(DynamicTuning dynamicTuning) {
-            this.dynamicTuning = dynamicTuning;
             return this;
         }
 
@@ -330,13 +231,13 @@ public final class Retry<T> {
         public RetryConfig<T> toConfig() {
             return new RetryConfig<>(
                     name, id, Map.copyOf(tags),
-                    stop, backoff, buildPolicy(), listeners, sleeper, clock,
-                    budget, metrics, attemptTimeout, attemptExecutor, fallback,
-                    backoffRouter, retryAfterExtractor,
-                    retrySwitch, tuning, bulkhead,
-                    singleFlight, coalesceBy, lifecycle,
-                    cache, cacheKeyFn, cacheTtl,
-                    eventBus, trace, attemptTimeouts
+                    stop, backoff, buildPolicy(),
+                    listeners, sleeper, clock,
+                    attemptTimeout, attemptExecutor,
+                    fallback,
+                    backoffRouter,
+                    lifecycle,
+                    attemptTimeouts
             );
         }
 
@@ -364,34 +265,15 @@ public final class Retry<T> {
                 throw new IllegalStateException("No task provided. Call execute(...) first.");
             }
 
-            if (healthProbe != null && dynamicTuning != null) {
-                dynamicTuning.apply(healthProbe.state(), this);
-            }
-
             return new RetryExecutor<>(
-                    // identity
-                    name, id, tags,
-                    // timing/stop
+                    name, id, Map.copyOf(tags),
                     stop, backoff,
-                    // policy
                     buildPolicy(),
-                    // infra
-                    listeners, sleeper, clock, budget, metrics,
-                    // timeouts
+                    listeners, sleeper, clock,
                     attemptTimeout, attemptExecutor,
-                    // task + fallback
                     task, fallback,
-                    // features params
                     backoffRouter,
-                    retryAfterExtractor,
-                    retrySwitch,
-                    tuning,
-                    bulkhead,
-                    singleFlight, coalesceBy,
                     lifecycle,
-                    cache, cacheKeyFn, cacheTtl,
-                    eventBus,
-                    trace,
                     attemptTimeouts
             );
         }

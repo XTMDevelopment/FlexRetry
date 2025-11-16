@@ -22,7 +22,7 @@ public final class ExponentialBackoff implements BackoffStrategy {
         this.multiplier = multiplier;
     }
 
-    public static Duration ofMillis(long initialMillis, double multiplier) {
+    public static BackoffStrategy ofMillis(long initialMillis, double multiplier) {
         return new ExponentialBackoff(Duration.ofMillis(initialMillis), multiplier);
     }
 
