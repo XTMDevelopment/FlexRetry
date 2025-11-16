@@ -2,11 +2,14 @@ package id.xtramile.flexretry.control;
 
 import id.xtramile.flexretry.Retry;
 import id.xtramile.flexretry.RetryContext;
+import id.xtramile.flexretry.control.breaker.CircuitBreaker;
 import id.xtramile.flexretry.control.budget.RetryBudget;
 import id.xtramile.flexretry.control.bulkhead.Bulkhead;
 import id.xtramile.flexretry.control.bulkhead.BulkheadFullException;
 import id.xtramile.flexretry.control.cache.ResultCache;
+import id.xtramile.flexretry.control.concurrency.ConcurrencyLimiter;
 import id.xtramile.flexretry.control.health.HealthProbe;
+import id.xtramile.flexretry.control.ratelimit.RateLimiter;
 import id.xtramile.flexretry.control.sf.SingleFlight;
 import id.xtramile.flexretry.control.tuning.DynamicTuning;
 import id.xtramile.flexretry.control.tuning.MutableTuning;
@@ -19,7 +22,7 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.Callable;
+import java.util.concurrent.*;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -189,5 +192,102 @@ public final class RetryControls {
         } catch (Throwable ignore) {}
 
         return builder;
+    }
+
+    /* -------------------- RATE LIMITER -------------------- */
+    public static <T> Supplier<T> rateLimited(Supplier<T> task, RateLimiter limiter) {
+        Objects.requireNonNull(task);
+        Objects.requireNonNull(limiter);
+
+        return () -> {
+            if (!limiter.tryAcquire()) {
+                throw new RuntimeException("rate limit exceeded");
+            }
+
+            return task.get();
+        };
+    }
+
+    /* -------------------- CONCURRENCY -------------------- */
+    public static <T> Supplier<T> concurrencyLimited(Supplier<T> task, ConcurrencyLimiter limiter) {
+        Objects.requireNonNull(task);
+        Objects.requireNonNull(limiter);
+
+        return () -> {
+            if (!limiter.tryAcquire()) {
+                throw new RuntimeException("concurrency limited");
+            }
+
+            try {
+                T result = task.get();
+                limiter.onSuccess();
+                return result;
+
+            } catch (Throwable e) {
+                limiter.onDropped();
+                throw e;
+            }
+        };
+    }
+
+    /* -------------------- CIRCUIT BREAKER -------------------- */
+    public static <T> Supplier<T> circuitBreak(CircuitBreaker breaker, Supplier<T> task) {
+        Objects.requireNonNull(breaker);
+        Objects.requireNonNull(task);
+
+        return () -> {
+            if (!breaker.allow()) {
+                throw new RuntimeException("circuit open");
+            }
+
+            try {
+                T result = task.get();
+                breaker.onSuccess();
+                return result;
+
+            } catch (Throwable e) {
+                breaker.onFailure();
+                throw e;
+            }
+        };
+    }
+
+    /* -------------------- HEDGING -------------------- */
+    public static <T> Supplier<T> hedged(Supplier<T> primary, Supplier<T> duplicate, long hedgeDelayMillis) {
+        Objects.requireNonNull(primary);
+        Objects.requireNonNull(duplicate);
+
+        return () -> {
+            ExecutorService service = Executors.newCachedThreadPool();
+            Future<T> future1 = service.submit(primary::get);
+
+            try {
+                return future1.get(hedgeDelayMillis, TimeUnit.MILLISECONDS);
+
+            } catch (TimeoutException exception) {
+                Future<T> future2 = service.submit(duplicate::get);
+
+                try {
+                    return CompletableFuture.anyOf(
+                            CompletableFuture.supplyAsync(() -> getQuiet(future1)),
+                            CompletableFuture.supplyAsync(() -> getQuiet(future2))
+                    ).thenApply(o -> (T) o).join();
+
+                } finally {
+                    service.shutdown();
+                }
+
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        };
+    }
+
+    private static <T> T getQuiet(Future<T> future) {
+        try {
+            return future.get();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 }
