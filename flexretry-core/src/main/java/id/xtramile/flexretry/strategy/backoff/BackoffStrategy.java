@@ -7,7 +7,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * Computes the delay before the next attempts. Attempt number start from 1.
  */
 public interface BackoffStrategy {
-    static BackoffStrategy fixed(Duration delay) {
+    static Duration fixed(Duration delay) {
         if (delay.isNegative()) {
             throw new IllegalArgumentException("delay must be >= 0");
         }
@@ -53,7 +53,7 @@ public interface BackoffStrategy {
         BackoffStrategy delegate = this;
 
         return attempt -> {
-            Duration base = delegate.delayForAttempt(attempt);
+            Duration base = Math.delayForAttempt(attempt);
 
             long ms = Math.max(0L, base.toMillis());
             long jitter = (long) (ms * fraction);
