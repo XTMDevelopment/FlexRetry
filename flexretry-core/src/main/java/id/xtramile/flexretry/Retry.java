@@ -6,19 +6,35 @@ import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
 import id.xtramile.flexretry.strategy.backoff.BackoffRouter;
 import id.xtramile.flexretry.strategy.backoff.BackoffStrategy;
 import id.xtramile.flexretry.strategy.backoff.FixedBackoff;
-import id.xtramile.flexretry.strategy.policy.*;
+import id.xtramile.flexretry.strategy.policy.ClassifierPolicy;
+import id.xtramile.flexretry.strategy.policy.ExceptionRetryPolicy;
+import id.xtramile.flexretry.strategy.policy.Policies;
+import id.xtramile.flexretry.strategy.policy.ResultPredicateRetryPolicy;
+import id.xtramile.flexretry.strategy.policy.RetryPolicy;
+import id.xtramile.flexretry.strategy.policy.RetryWindow;
+import id.xtramile.flexretry.strategy.policy.WindowPolicy;
 import id.xtramile.flexretry.strategy.stop.FixedAttemptsStop;
 import id.xtramile.flexretry.strategy.stop.StopStrategy;
 import id.xtramile.flexretry.strategy.timeout.AttemptTimeoutStrategy;
 import id.xtramile.flexretry.support.time.Clock;
 
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
-import java.util.function.*;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * Public facade with a fluent Builder
@@ -89,7 +105,7 @@ public final class Retry<T> {
 
         public Builder<T> stop(StopStrategy stop) {
             this.stop = Objects.requireNonNull(stop);
-            return null;
+            return this;
         }
 
         public Builder<T> delayMillis(long millis) {
@@ -251,12 +267,7 @@ public final class Retry<T> {
         }
 
         public RetryOutcome<T> getOutcome() {
-            try {
-                T result = getResult();
-                return new RetryOutcome<>(true, result, null, 0);
-            } catch (RetryException e) {
-                return new RetryOutcome<>(false, null, e.getCause(), e.attempts());
-            }
+            return buildExecutor().runWithOutcome();
         }
 
         // ======== Internals ========
@@ -278,6 +289,7 @@ public final class Retry<T> {
             );
         }
 
+        @SuppressWarnings("unchecked")
         public RetryPolicy<T> buildPolicy() {
             if (policies.isEmpty()) {
                 return (result, error, attempt, maxAttempts) -> false;

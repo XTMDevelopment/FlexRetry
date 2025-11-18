@@ -11,7 +11,13 @@ import id.xtramile.flexretry.support.time.Clock;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 
 /**
@@ -48,7 +54,6 @@ public final class RetryExecutor<T> {
 
     // ---- Lifecycle ----
     private final AttemptLifecycle<T> lifecycle;
-
 
     public RetryExecutor(
             // identity
@@ -104,8 +109,6 @@ public final class RetryExecutor<T> {
             return throwable.getCause();
         } else if (throwable instanceof CompletionException && throwable.getCause() != null) {
             return throwable.getCause();
-        } else if (throwable instanceof RuntimeException && throwable.getCause() != null) {
-            return throwable.getCause().getCause();
         }
 
         return throwable;
@@ -128,19 +131,30 @@ public final class RetryExecutor<T> {
     }
 
     public T run() {
+        RetryOutcome<T> outcome = runWithOutcome();
+        if (outcome.isSuccess()) {
+            return outcome.result();
+        }
+        String errorMessage = outcome.message() != null ? outcome.message() : "Retry failed";
+        throw new RetryException(errorMessage, outcome.error(), outcome.attempts());
+    }
+
+    public RetryOutcome<T> runWithOutcome() {
         T lastResult = null;
         Throwable lastError = null;
         int finalAttempt = 0;
 
         long startNanos = clock.nanoTime();
+        int maxAttempts = extractMaxAttempts();
 
         try {
             for (int attempt = 1; ; attempt++) {
                 final Duration nextDelay = computeNextDelay(attempt, lastError);
-                final RetryContext<T> ctxBefore = buildContext(attempt, lastResult, lastError, nextDelay);
+                final RetryContext<T> ctxBefore = buildContext(attempt, maxAttempts, lastResult, lastError, nextDelay);
 
                 if (shouldStopBeforeAttempt(attempt, startNanos, nextDelay)) {
-                    return handleExhausted("Retry exhausted at attempt " + (attempt - 1), lastResult, lastError, attempt - 1);
+                    return new RetryOutcome<>(false, lastResult, lastError, attempt - 1,
+                            "Retry exhausted at attempt " + (attempt - 1));
                 }
 
                 announceAttempt(ctxBefore);
@@ -152,25 +166,27 @@ public final class RetryExecutor<T> {
 
                     afterAttemptSuccess(ctxBefore, result);
 
-                    if (policy.shouldRetry(result, null, attempt, Integer.MAX_VALUE)) {
+                    if (policy.shouldRetry(result, null, attempt, maxAttempts)) {
                         sleepAdjusted(nextDelay, ctxBefore);
                         continue;
                     }
 
                     finalAttempt = attempt;
-                    return handleSuccess(attempt, result);
+                    handleSuccess(attempt, maxAttempts, result);
+                    return new RetryOutcome<>(true, result, null, attempt);
 
                 } catch (Throwable e) {
                     lastError = unwrap(e);
                     afterAttemptFailure(ctxBefore, lastError);
 
-                    if (policy.shouldRetry(null, lastError, attempt, Integer.MAX_VALUE)) {
+                    if (policy.shouldRetry(null, lastError, attempt, maxAttempts)) {
                         sleepAdjusted(nextDelay, ctxBefore);
                         continue;
                     }
 
                     finalAttempt = attempt;
-                    return finalizeFailure(attempt, lastResult, lastError);
+                    return handleFailureWithOutcome(attempt, maxAttempts, lastResult, lastError,
+                            "Retry failed after " + attempt + " attempt(s)");
                 }
             }
 
@@ -178,11 +194,12 @@ public final class RetryExecutor<T> {
             Thread.currentThread().interrupt();
 
             int att = finalAttempt == 0 ? 1 : finalAttempt;
-            return handleInterrupted(att, ie);
+            return handleFailureWithOutcome(att, maxAttempts, null, ie,
+                    "Interrupted during retry");
 
         } finally {
             int att = finalAttempt == 0 ? 1 : finalAttempt;
-            safeRun(() -> listeners.onFinally.accept(new RetryContext<>(id, name, att, att, null, null, Duration.ZERO, tags)));
+            safeRun(() -> listeners.onFinally.accept(new RetryContext<>(id, name, att, maxAttempts, null, null, Duration.ZERO, tags)));
         }
     }
 
@@ -194,8 +211,12 @@ public final class RetryExecutor<T> {
         return backoff.delayForAttempt(attempt);
     }
 
-    private RetryContext<T> buildContext(int attempt, T lastResult, Throwable lastError, Duration nextDelay) {
-        return new RetryContext<>(id, name, attempt, Integer.MAX_VALUE, lastResult, lastError, nextDelay, tags);
+    private RetryContext<T> buildContext(int attempt, int maxAttempts, T lastResult, Throwable lastError, Duration nextDelay) {
+        return new RetryContext<>(id, name, attempt, maxAttempts, lastResult, lastError, nextDelay, tags);
+    }
+
+    private int extractMaxAttempts() {
+        return stop.maxAttempts().orElse(Integer.MAX_VALUE);
     }
 
     private boolean shouldStopBeforeAttempt(int attempt, long startNanos, Duration nextDelay) {
@@ -232,42 +253,26 @@ public final class RetryExecutor<T> {
         sleeper.sleep(adjusted);
     }
 
-    private T handleSuccess(int attempt, T result) {
-        RetryContext<T> ctxSuccess = new RetryContext<>(id, name, attempt, attempt, result, null, Duration.ZERO, tags);
+    private void handleSuccess(int attempt, int maxAttempts, T result) {
+        RetryContext<T> ctxSuccess = new RetryContext<>(id, name, attempt, maxAttempts, result, null, Duration.ZERO, tags);
         safeRun(() -> listeners.onSuccess.accept(result, ctxSuccess));
 
         if (lifecycle != null) {
             safeRun(() -> lifecycle.afterSuccess(ctxSuccess));
         }
-
-        return result;
     }
 
-    private T finalizeFailure(int attempt, T lastResult, Throwable lastError) {
-        return handleFailureWithFallback(attempt, lastResult, lastError,
-                "Retry failed after " + attempt + " attempt(s)");
-    }
-
-    private T handleExhausted(String message, T lastResult, Throwable lastError, int attempts) {
-        return handleFailureWithFallback(attempts, lastResult, lastError,
-                message);
-    }
-
-    private T handleInterrupted(int attempt, InterruptedException ie) {
-        return handleFailureWithFallback(attempt, null, ie,
-                "Interrupted during retry");
-    }
-
-    private T handleFailureWithFallback(int attempt, T lastResult, Throwable lastError, String errorMessage) {
-        RetryContext<T> ctxFail = new RetryContext<>(id, name, attempt, attempt, lastResult, lastError, Duration.ZERO, tags);
+    private RetryOutcome<T> handleFailureWithOutcome(int attempt, int maxAttempts, T lastResult, Throwable lastError, String errorMessage) {
+        RetryContext<T> ctxFail = new RetryContext<>(id, name, attempt, maxAttempts, lastResult, lastError, Duration.ZERO, tags);
         safeRun(() -> listeners.onFailure.accept(lastError, ctxFail));
 
         if (fallback != null) {
             safeRun(() -> listeners.onRecover.accept(ctxFail));
-            return fallback.apply(lastError);
+            T fallbackResult = fallback.apply(lastError);
+            return new RetryOutcome<>(true, fallbackResult, null, attempt);
         }
 
-        throw new RetryException(errorMessage, lastError, attempt);
+        return new RetryOutcome<>(false, lastResult, lastError, attempt, errorMessage);
     }
 
     private T executeAttempt(int attemptIdx) throws Exception {

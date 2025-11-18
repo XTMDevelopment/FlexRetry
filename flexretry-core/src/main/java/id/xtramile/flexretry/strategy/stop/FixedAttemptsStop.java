@@ -1,6 +1,7 @@
 package id.xtramile.flexretry.strategy.stop;
 
 import java.time.Duration;
+import java.util.Optional;
 
 /**
  * Stop after a fixed number of attempts (attempts are 1-based)
@@ -21,7 +22,8 @@ public final class FixedAttemptsStop implements StopStrategy {
         return attempt > maxAttempts;
     }
 
-    public int maxAttempts() {
-        return maxAttempts;
+    @Override
+    public Optional<Integer> maxAttempts() {
+        return Optional.of(maxAttempts);
     }
 }
