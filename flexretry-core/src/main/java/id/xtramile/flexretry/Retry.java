@@ -39,7 +39,7 @@ import java.util.function.Supplier;
 /**
  * Public facade with a fluent Builder
  */
-public final class Retry<T> {
+public final class Retry {
     private Retry() {
     }
 

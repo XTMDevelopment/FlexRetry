@@ -9,6 +9,7 @@ import id.xtramile.flexretry.strategy.policy.RetryPolicy;
 import id.xtramile.flexretry.strategy.policy.RetryWindow;
 import id.xtramile.flexretry.strategy.stop.FixedAttemptsStop;
 import id.xtramile.flexretry.strategy.stop.StopStrategy;
+import id.xtramile.flexretry.support.time.ManualClock;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -18,6 +19,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -409,6 +411,116 @@ class RetryTest {
     @Test
     void testBuilderNullCallableThrows() {
         assertThrows(NullPointerException.class, () -> Retry.<String>newBuilder().execute((Callable<String>) null));
+    }
+
+    @Test
+    void testBuilderSleeper() {
+        AtomicInteger sleepCount = new AtomicInteger(0);
+        AtomicLong totalSleepMillis = new AtomicLong(0);
+
+        Sleeper customSleeper = duration -> {
+            sleepCount.incrementAndGet();
+            totalSleepMillis.addAndGet(duration.toMillis());
+        };
+
+        AtomicInteger attempts = new AtomicInteger(0);
+        Retry.<String>newBuilder()
+                .maxAttempts(3)
+                .delayMillis(50)
+                .retryOn(RuntimeException.class)
+                .sleeper(customSleeper)
+                .execute((Callable<String>) () -> {
+                    attempts.incrementAndGet();
+                    if (attempts.get() < 2) {
+                        throw new RuntimeException("retry");
+                    }
+                    return "success";
+                })
+                .getResult();
+
+        assertEquals(2, attempts.get());
+        assertTrue(sleepCount.get() >= 1);
+        assertTrue(totalSleepMillis.get() >= 50);
+    }
+
+    @Test
+    void testBuilderClock() {
+        ManualClock clock = new ManualClock(1000);
+        AtomicInteger attempts = new AtomicInteger(0);
+
+        String result = Retry.<String>newBuilder()
+                .maxAttempts(2)
+                .retryOn(RuntimeException.class)
+                .clock(clock)
+                .execute((Callable<String>) () -> {
+                    attempts.incrementAndGet();
+                    if (attempts.get() < 2) {
+                        throw new RuntimeException("retry");
+                    }
+                    return "success";
+                })
+                .getResult();
+
+        assertEquals("success", result);
+        assertEquals(2, attempts.get());
+    }
+
+    @Test
+    void testBuilderSleeperWithZeroDelay() {
+        AtomicInteger sleepCount = new AtomicInteger(0);
+        AtomicInteger attempts = new AtomicInteger(0);
+
+        Sleeper customSleeper = duration -> sleepCount.incrementAndGet();
+
+        Retry.<String>newBuilder()
+                .maxAttempts(3)
+                .delayMillis(0)
+                .retryOn(RuntimeException.class)
+                .sleeper(customSleeper)
+                .execute((Callable<String>) () -> {
+                    attempts.incrementAndGet();
+                    if (attempts.get() < 2) {
+                        throw new RuntimeException("retry");
+                    }
+                    return "success";
+                })
+                .getResult();
+
+        assertTrue(sleepCount.get() >= 1);
+        assertEquals(2, attempts.get());
+    }
+
+    @Test
+    void testBuilderClockWithManualClock() {
+        ManualClock clock = new ManualClock(0);
+        AtomicInteger attempts = new AtomicInteger(0);
+
+        RetryOutcome<String> outcome = Retry.<String>newBuilder()
+                .maxAttempts(3)
+                .retryOn(RuntimeException.class)
+                .clock(clock)
+                .execute((Callable<String>) () -> {
+                    attempts.incrementAndGet();
+                    if (attempts.get() < 2) {
+                        throw new RuntimeException("retry");
+                    }
+                    return "success";
+                })
+                .getOutcome();
+
+        assertTrue(outcome.isSuccess());
+        assertEquals("success", outcome.result());
+        assertEquals(2, attempts.get());
+    }
+
+    @Test
+    void testBuilderNullSleeperThrows() {
+        assertThrows(NullPointerException.class, () -> Retry.<String>newBuilder().sleeper(null));
+    }
+
+    @Test
+    void testBuilderNullClockThrows() {
+        assertThrows(NullPointerException.class, () -> Retry.<String>newBuilder().clock(null));
     }
 }
 

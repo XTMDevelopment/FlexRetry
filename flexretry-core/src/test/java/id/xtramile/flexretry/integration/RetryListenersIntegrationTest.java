@@ -56,8 +56,8 @@ class RetryListenersIntegrationTest {
         AtomicInteger onFailure = new AtomicInteger(0);
         AtomicInteger onFinally = new AtomicInteger(0);
 
-        assertThrows(RetryException.class, () -> {
-            Retry.<String>newBuilder()
+        assertThrows(RetryException.class,
+                () -> Retry.<String>newBuilder()
                     .maxAttempts(2)
                     .retryOn(RuntimeException.class)
                     .onAttempt(ctx -> onAttempt.incrementAndGet())
@@ -66,8 +66,7 @@ class RetryListenersIntegrationTest {
                     .execute((Callable<String>) () -> {
                         throw new RuntimeException("always fail");
                     })
-                    .getResult();
-        });
+                    .getResult());
 
         assertTrue(onAttempt.get() >= 2);
         assertEquals(1, onFailure.get());
