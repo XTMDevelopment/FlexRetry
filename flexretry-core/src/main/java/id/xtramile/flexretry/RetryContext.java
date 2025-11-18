@@ -9,6 +9,7 @@ import java.util.Map;
  */
 public final class RetryContext<T> {
     private final String id;
+    private final String name;
     private final int attempt;
     private final int maxAttempts;
     private final T lastResult;
@@ -18,6 +19,7 @@ public final class RetryContext<T> {
 
     public RetryContext(
             String id,
+            String name,
             int attempt,
             int maxAttempts,
             T lastResult,
@@ -26,6 +28,7 @@ public final class RetryContext<T> {
             Map<String, Object> tags
     ) {
         this.id = id;
+        this.name = name;
         this.attempt = attempt;
         this.maxAttempts = maxAttempts;
         this.lastResult = lastResult;
@@ -36,6 +39,10 @@ public final class RetryContext<T> {
 
     public String id() {
         return id;
+    }
+
+    public String name() {
+        return name;
     }
 
     public int attempt() {

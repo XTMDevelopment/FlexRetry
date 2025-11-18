@@ -99,7 +99,7 @@ public final class RetryControls {
 
         return () -> {
             String key = keyFn.apply(new RetryContext<>(
-                    "singleFlight", 1, 1, null, null, Duration.ZERO, Map.of()
+                    "singleFlight", "flexretry",1, 1, null, null, Duration.ZERO, Map.of()
             ));
 
             try {
@@ -142,7 +142,7 @@ public final class RetryControls {
         Objects.requireNonNull(original);
 
         final String key = keyFn.apply(new RetryContext<>(
-                "cache", 1, 1, null, null, Duration.ZERO, Map.of()
+                "cache", "flexretry", 1, 1, null, null, Duration.ZERO, Map.of()
         ));
 
         return () -> {

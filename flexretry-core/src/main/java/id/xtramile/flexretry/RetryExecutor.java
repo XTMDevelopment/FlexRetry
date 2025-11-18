@@ -182,7 +182,7 @@ public final class RetryExecutor<T> {
 
         } finally {
             int att = finalAttempt == 0 ? 1 : finalAttempt;
-            safeRun(() -> listeners.onFinally.accept(new RetryContext<>(id, att, att, null, null, Duration.ZERO, tags)));
+            safeRun(() -> listeners.onFinally.accept(new RetryContext<>(id, name, att, att, null, null, Duration.ZERO, tags)));
         }
     }
 
@@ -195,7 +195,7 @@ public final class RetryExecutor<T> {
     }
 
     private RetryContext<T> buildContext(int attempt, T lastResult, Throwable lastError, Duration nextDelay) {
-        return new RetryContext<>(id, attempt, Integer.MAX_VALUE, lastResult, lastError, nextDelay, tags);
+        return new RetryContext<>(id, name, attempt, Integer.MAX_VALUE, lastResult, lastError, nextDelay, tags);
     }
 
     private boolean shouldStopBeforeAttempt(int attempt, long startNanos, Duration nextDelay) {
@@ -233,7 +233,7 @@ public final class RetryExecutor<T> {
     }
 
     private T handleSuccess(int attempt, T result) {
-        RetryContext<T> ctxSuccess = new RetryContext<>(id, attempt, attempt, result, null, Duration.ZERO, tags);
+        RetryContext<T> ctxSuccess = new RetryContext<>(id, name, attempt, attempt, result, null, Duration.ZERO, tags);
         safeRun(() -> listeners.onSuccess.accept(result, ctxSuccess));
 
         if (lifecycle != null) {
@@ -259,7 +259,7 @@ public final class RetryExecutor<T> {
     }
 
     private T handleFailureWithFallback(int attempt, T lastResult, Throwable lastError, String errorMessage) {
-        RetryContext<T> ctxFail = new RetryContext<>(id, attempt, attempt, lastResult, lastError, Duration.ZERO, tags);
+        RetryContext<T> ctxFail = new RetryContext<>(id, name, attempt, attempt, lastResult, lastError, Duration.ZERO, tags);
         safeRun(() -> listeners.onFailure.accept(lastError, ctxFail));
 
         if (fallback != null) {
