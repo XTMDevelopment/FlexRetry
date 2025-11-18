@@ -11,6 +11,6 @@ public interface TraceContext {
     TraceScope withSpan(String operationName, Map<String, String> attributes);
 
     static TraceContext noop() {
-
+        return NoopTraceContext.INSTANCE;
     }
 }

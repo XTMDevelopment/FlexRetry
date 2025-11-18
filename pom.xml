@@ -37,6 +37,7 @@
         <module>flexretry-core</module>
         <module>flexretry-control</module>
         <module>flexretry-observability</module>
+        <module>flexretry-observability-simple</module>
         <module>flexretry-bom</module>
     </modules>
 </project>
