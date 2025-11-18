@@ -65,9 +65,7 @@ class RetryRegistryTest {
     void testTemplateWithNonExistentName() {
         RetryRegistry registry = new RetryRegistry();
         
-        assertThrows(IllegalArgumentException.class, () -> {
-            registry.template("non-existent");
-        });
+        assertThrows(IllegalArgumentException.class, () -> registry.template("non-existent"));
     }
 
     @Test

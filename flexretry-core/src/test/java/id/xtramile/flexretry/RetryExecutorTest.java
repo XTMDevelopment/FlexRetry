@@ -15,7 +15,6 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
@@ -165,25 +164,14 @@ class RetryExecutorTest {
         AtomicInteger onFailure = new AtomicInteger(0);
         AtomicInteger onFinally = new AtomicInteger(0);
 
-        RetryListeners<String> listeners = new RetryListeners<>();
-        listeners.onAttempt = ctx -> onAttempt.incrementAndGet();
-        listeners.onSuccess = (result, ctx) -> onSuccess.incrementAndGet();
-        listeners.onFailure = (error, ctx) -> onFailure.incrementAndGet();
-        listeners.onFinally = ctx -> onFinally.incrementAndGet();
-
+        RetryListeners<String> listeners = createListeners(onAttempt, onSuccess, onFailure, onFinally);
         RetryPolicy<String> policy = (result, error, attempt, maxAttempts) -> false;
-        RetryExecutor<String> executor = new RetryExecutor<String>(
-                "test", "id", Map.of(),
+        RetryExecutor<String> executor = createExecutorWithListeners(
                 new FixedAttemptsStop(1),
                 new FixedBackoff(Duration.ZERO),
                 policy,
                 listeners,
-                Sleeper.system(),
-                Clock.system(),
-                null, null,
-                () -> "success",
-                null,
-                null, null, null
+                () -> "success"
         );
 
         executor.run();
@@ -198,36 +186,14 @@ class RetryExecutorTest {
         AtomicInteger afterSuccess = new AtomicInteger(0);
         AtomicInteger afterFailure = new AtomicInteger(0);
 
-        AttemptLifecycle<String> lifecycle = new AttemptLifecycle<>() {
-            @Override
-            public void beforeAttempt(RetryContext<String> ctx) {
-                beforeAttempt.incrementAndGet();
-            }
-
-            @Override
-            public void afterSuccess(RetryContext<String> ctx) {
-                afterSuccess.incrementAndGet();
-            }
-
-            @Override
-            public void afterFailure(RetryContext<String> ctx, Throwable error) {
-                afterFailure.incrementAndGet();
-            }
-        };
-
+        AttemptLifecycle<String> lifecycle = createLifecycle(beforeAttempt, afterSuccess, afterFailure);
         RetryPolicy<String> policy = (result, error, attempt, maxAttempts) -> false;
-        RetryExecutor<String> executor = new RetryExecutor<>(
-                "test", "id", Map.of(),
+        RetryExecutor<String> executor = createExecutorWithLifecycle(
                 new FixedAttemptsStop(1),
                 new FixedBackoff(Duration.ZERO),
                 policy,
-                new RetryListeners<>(),
-                Sleeper.system(),
-                Clock.system(),
-                null, null,
-                () -> "success",
-                null,
-                null, lifecycle, null
+                lifecycle,
+                () -> "success"
         );
 
         executor.run();
@@ -241,19 +207,14 @@ class RetryExecutorTest {
         BackoffStrategy errorBackoff = new FixedBackoff(Duration.ofMillis(100));
         router.when(e -> e instanceof RuntimeException, errorBackoff);
 
-        RetryExecutor<String> executor = new RetryExecutor<>(
-                "test", "id", Map.of(),
+        RetryExecutor<String> executor = createExecutorWithBackoffRouter(
                 new FixedAttemptsStop(2),
                 new FixedBackoff(Duration.ZERO),
                 (result, error, attempt, maxAttempts) -> error != null && attempt < maxAttempts,
-                new RetryListeners<>(),
-                Sleeper.system(),
-                Clock.system(),
-                null, null,
+                router,
                 () -> {
                     throw new RuntimeException("error");
-                },
-                null, router, null, null
+                }
         );
 
         assertThrows(RetryException.class, executor::run);
@@ -263,21 +224,16 @@ class RetryExecutorTest {
     void testAttemptTimeout() {
         ExecutorService executorService = Executors.newSingleThreadExecutor();
         try {
-            RetryExecutor<String> executor = new RetryExecutor<>(
-                    "test", "id", Map.of(),
+            RetryExecutor<String> executor = createExecutorWithTimeout(
                     new FixedAttemptsStop(1),
                     new FixedBackoff(Duration.ZERO),
                     (result, error, attempt, maxAttempts) -> false,
-                    new RetryListeners<>(),
-                    Sleeper.system(),
-                    Clock.system(),
                     Duration.ofMillis(50),
                     executorService,
                     () -> {
                         Thread.sleep(100);
                         return "success";
-                    },
-                    null, null, null, null
+                    }
             );
 
             assertThrows(RetryException.class, executor::run);
@@ -291,22 +247,16 @@ class RetryExecutorTest {
         ExecutorService executorService = Executors.newSingleThreadExecutor();
         try {
             AttemptTimeoutStrategy timeoutStrategy = new FixedTimeout(Duration.ofMillis(50));
-
-            RetryExecutor<String> executor = new RetryExecutor<>(
-                    "test", "id", Map.of(),
+            RetryExecutor<String> executor = createExecutorWithTimeoutStrategy(
                     new FixedAttemptsStop(1),
                     new FixedBackoff(Duration.ZERO),
                     (result, error, attempt, maxAttempts) -> false,
-                    new RetryListeners<>(),
-                    Sleeper.system(),
-                    Clock.system(),
-                    null,
                     executorService,
+                    timeoutStrategy,
                     () -> {
                         Thread.sleep(100);
                         return "success";
-                    },
-                    null, null, null, timeoutStrategy
+                    }
             );
 
             assertThrows(RetryException.class, executor::run);
@@ -367,29 +317,13 @@ class RetryExecutorTest {
     @Test
     void testStopBeforeAttempt() {
         ManualClock clock = new ManualClock(0);
-        StopStrategy stop = new StopStrategy() {
-            @Override
-            public boolean shouldStop(int attempt, long startNanos, long nowNanos, Duration nextDelay) {
-                return attempt > 1;
-            }
-
-            @Override
-            public Optional<Integer> maxAttempts() {
-                return java.util.Optional.empty();
-            }
-        };
-
-        RetryExecutor<String> executor = new RetryExecutor<>(
-                "test", "id", Map.of(),
+        StopStrategy stop = createStopStrategy();
+        RetryExecutor<String> executor = createExecutorWithClock(
                 stop,
                 new FixedBackoff(Duration.ZERO),
                 (result, error, attempt, maxAttempts) -> true,
-                new RetryListeners<>(),
-                Sleeper.system(),
                 clock,
-                null, null,
-                () -> "success",
-                null, null, null, null
+                () -> "success"
         );
 
         RetryOutcome<String> outcome = executor.runWithOutcome();
@@ -399,31 +333,20 @@ class RetryExecutorTest {
     @Test
     void testBeforeSleep() {
         AtomicInteger sleepCount = new AtomicInteger(0);
-        RetryListeners<String> listeners = new RetryListeners<>();
-        listeners.beforeSleep = (duration, ctx) -> {
-            sleepCount.incrementAndGet();
-            return duration;
-        };
-
+        RetryListeners<String> listeners = createListenersWithBeforeSleep(sleepCount);
         AtomicInteger taskAttempts = new AtomicInteger(0);
         RetryPolicy<String> policy = (result, error, attempt, maxAttempts)
                 -> "retry".equals(result) && attempt < maxAttempts;
 
-        RetryExecutor<String> executor = new RetryExecutor<>(
-                "test", "id", Map.of(),
+        RetryExecutor<String> executor = createExecutorWithListeners(
                 new FixedAttemptsStop(2),
                 new FixedBackoff(Duration.ofMillis(10)),
                 policy,
                 listeners,
-                Sleeper.system(),
-                Clock.system(),
-                null, null,
                 () -> {
                     taskAttempts.incrementAndGet();
                     return "retry";
-                },
-                null,
-                null, null, null
+                }
         );
 
         String result = executor.run();
@@ -433,30 +356,20 @@ class RetryExecutorTest {
 
     @Test
     void testNullSafe() {
-        RetryListeners<String> listeners = new RetryListeners<>();
-        listeners.beforeSleep = (duration, ctx) -> {
-            throw new RuntimeException("error in beforeSleep");
-        };
-
+        RetryListeners<String> listeners = createListenersWithFailingBeforeSleep();
         AtomicInteger taskAttempts = new AtomicInteger(0);
         RetryPolicy<String> policy = (result, error, attempt, maxAttempts)
                 -> "retry".equals(result) && attempt < maxAttempts;
 
-        RetryExecutor<String> executor = new RetryExecutor<>(
-                "test", "id", Map.of(),
+        RetryExecutor<String> executor = createExecutorWithListeners(
                 new FixedAttemptsStop(2),
                 new FixedBackoff(Duration.ofMillis(10)),
                 policy,
                 listeners,
-                Sleeper.system(),
-                Clock.system(),
-                null, null,
                 () -> {
                     taskAttempts.incrementAndGet();
                     return "retry";
-                },
-                null,
-                null, null, null
+                }
         );
 
         String result = executor.run();
@@ -490,6 +403,170 @@ class RetryExecutorTest {
                 task, fallback,
                 null, null, null
         );
+    }
+
+    private RetryListeners<String> createListeners(
+            AtomicInteger onAttempt, AtomicInteger onSuccess,
+            AtomicInteger onFailure, AtomicInteger onFinally) {
+        RetryListeners<String> listeners = new RetryListeners<>();
+
+        listeners.onAttempt = ctx -> onAttempt.incrementAndGet();
+        listeners.onSuccess = (result, ctx) -> onSuccess.incrementAndGet();
+        listeners.onFailure = (error, ctx) -> onFailure.incrementAndGet();
+        listeners.onFinally = ctx -> onFinally.incrementAndGet();
+
+        return listeners;
+    }
+
+    private RetryListeners<String> createListenersWithBeforeSleep(AtomicInteger sleepCount) {
+        RetryListeners<String> listeners = new RetryListeners<>();
+        listeners.beforeSleep = (duration, ctx) -> {
+            sleepCount.incrementAndGet();
+            return duration;
+        };
+
+        return listeners;
+    }
+
+    private RetryListeners<String> createListenersWithFailingBeforeSleep() {
+        RetryListeners<String> listeners = new RetryListeners<>();
+        listeners.beforeSleep = (duration, ctx) -> {
+            throw new RuntimeException("error in beforeSleep");
+        };
+
+        return listeners;
+    }
+
+    private AttemptLifecycle<String> createLifecycle(
+            AtomicInteger beforeAttempt, AtomicInteger afterSuccess, AtomicInteger afterFailure) {
+        return new AttemptLifecycle<>() {
+            @Override
+            public void beforeAttempt(RetryContext<String> ctx) {
+                beforeAttempt.incrementAndGet();
+            }
+
+            @Override
+            public void afterSuccess(RetryContext<String> ctx) {
+                afterSuccess.incrementAndGet();
+            }
+
+            @Override
+            public void afterFailure(RetryContext<String> ctx, Throwable error) {
+                afterFailure.incrementAndGet();
+            }
+        };
+    }
+
+    private RetryExecutor<String> createExecutorWithListeners(
+            StopStrategy stop, BackoffStrategy backoff, RetryPolicy<String> policy,
+            RetryListeners<String> listeners, Callable<String> task) {
+
+        return new RetryExecutor<>(
+                "test", "id", Map.of(),
+                stop, backoff,
+                policy,
+                listeners,
+                Sleeper.system(),
+                Clock.system(),
+                null, null,
+                task,
+                null,
+                null, null, null
+        );
+    }
+
+    private RetryExecutor<String> createExecutorWithLifecycle(
+            StopStrategy stop, BackoffStrategy backoff, RetryPolicy<String> policy,
+            AttemptLifecycle<String> lifecycle, Callable<String> task) {
+
+        return new RetryExecutor<>(
+                "test", "id", Map.of(),
+                stop, backoff,
+                policy,
+                new RetryListeners<>(),
+                Sleeper.system(),
+                Clock.system(),
+                null, null,
+                task,
+                null,
+                null, lifecycle, null
+        );
+    }
+
+    private RetryExecutor<String> createExecutorWithBackoffRouter(
+            StopStrategy stop, BackoffStrategy backoff, RetryPolicy<String> policy,
+            BackoffRouter router, Callable<String> task) {
+
+        return new RetryExecutor<>(
+                "test", "id", Map.of(),
+                stop, backoff,
+                policy,
+                new RetryListeners<>(),
+                Sleeper.system(),
+                Clock.system(),
+                null, null,
+                task,
+                null,
+                router, null, null
+        );
+    }
+
+    private RetryExecutor<String> createExecutorWithTimeout(
+            StopStrategy stop, BackoffStrategy backoff, RetryPolicy<String> policy,
+            Duration attemptTimeout, ExecutorService attemptExecutor, Callable<String> task) {
+
+        return new RetryExecutor<>(
+                "test", "id", Map.of(),
+                stop, backoff,
+                policy,
+                new RetryListeners<>(),
+                Sleeper.system(),
+                Clock.system(),
+                attemptTimeout, attemptExecutor,
+                task,
+                null,
+                null, null, null
+        );
+    }
+
+    private RetryExecutor<String> createExecutorWithTimeoutStrategy(
+            StopStrategy stop, BackoffStrategy backoff, RetryPolicy<String> policy,
+            ExecutorService attemptExecutor, AttemptTimeoutStrategy attemptTimeouts, Callable<String> task) {
+
+        return new RetryExecutor<>(
+                "test", "id", Map.of(),
+                stop, backoff,
+                policy,
+                new RetryListeners<>(),
+                Sleeper.system(),
+                Clock.system(),
+                null, attemptExecutor,
+                task,
+                null,
+                null, null, attemptTimeouts
+        );
+    }
+
+    private RetryExecutor<String> createExecutorWithClock(
+            StopStrategy stop, BackoffStrategy backoff, RetryPolicy<String> policy,
+            Clock clock, Callable<String> task) {
+
+        return new RetryExecutor<>(
+                "test", "id", Map.of(),
+                stop, backoff,
+                policy,
+                new RetryListeners<>(),
+                Sleeper.system(),
+                clock,
+                null, null,
+                task,
+                null,
+                null, null, null
+        );
+    }
+
+    private StopStrategy createStopStrategy() {
+        return (attempt, startNanos, nowNanos, nextDelay) -> attempt > 1;
     }
 }
 

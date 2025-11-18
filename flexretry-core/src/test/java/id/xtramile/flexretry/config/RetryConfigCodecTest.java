@@ -40,9 +40,8 @@ class RetryConfigCodecTest {
     void testFromMap() {
         Map<String, Object> map = Map.of("name", "test", "id", "id", "tags", Map.of());
         
-        assertThrows(UnsupportedOperationException.class, () -> {
-            RetryConfigCodec.fromMap(map);
-        });
+        assertThrows(UnsupportedOperationException.class,
+                () -> RetryConfigCodec.fromMap(map));
     }
 }
 

@@ -39,7 +39,7 @@ class RetryTemplateTest {
     @Test
     void testRun() {
         RetryPolicy<String> policy = (result, error, attempt, maxAttempts) -> false;
-        RetryConfig<String> config = new RetryConfig<String>(
+        RetryConfig<String> config = new RetryConfig<>(
                 "test", "id", Map.of(),
                 new FixedAttemptsStop(1),
                 new FixedBackoff(Duration.ZERO),
@@ -61,7 +61,7 @@ class RetryTemplateTest {
     void testRunAsync() throws Exception {
         Executor executor = Executors.newSingleThreadExecutor();
         RetryPolicy<String> policy = (result, error, attempt, maxAttempts) -> false;
-        RetryConfig<String> config = new RetryConfig<String>(
+        RetryConfig<String> config = new RetryConfig<>(
                 "test", "id", Map.of(),
                 new FixedAttemptsStop(1),
                 new FixedBackoff(Duration.ZERO),

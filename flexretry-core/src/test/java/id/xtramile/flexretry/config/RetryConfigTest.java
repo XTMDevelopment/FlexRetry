@@ -39,60 +39,53 @@ class RetryConfigTest {
 
     @Test
     void testConstructorWithNullName() {
-        assertThrows(NullPointerException.class, () -> {
-            new RetryConfig<>(
-                    null, "id", Map.of(),
-                    new FixedAttemptsStop(3),
-                    new FixedBackoff(Duration.ZERO),
-                    (result, error, attempt, maxAttempts) -> false,
-                    new RetryListeners<>(),
-                    Sleeper.system(),
-                    Clock.system(),
-                    null, null,
-                    null, null, null, null
-            );
-        });
+        assertThrows(NullPointerException.class, () -> new RetryConfig<>(
+                null, "id", Map.of(),
+                new FixedAttemptsStop(3),
+                new FixedBackoff(Duration.ZERO),
+                (result, error, attempt, maxAttempts) -> false,
+                new RetryListeners<>(),
+                Sleeper.system(),
+                Clock.system(),
+                null, null,
+                null, null, null, null
+        ));
     }
 
     @Test
     void testConstructorWithNullId() {
-        assertThrows(NullPointerException.class, () -> {
-            new RetryConfig<>(
-                    "test", null, Map.of(),
-                    new FixedAttemptsStop(3),
-                    new FixedBackoff(Duration.ZERO),
-                    (result, error, attempt, maxAttempts) -> false,
-                    new RetryListeners<>(),
-                    Sleeper.system(),
-                    Clock.system(),
-                    null, null,
-                    null, null, null, null
-            );
-        });
+        assertThrows(NullPointerException.class, () -> new RetryConfig<>(
+                "test", null, Map.of(),
+                new FixedAttemptsStop(3),
+                new FixedBackoff(Duration.ZERO),
+                (result, error, attempt, maxAttempts) -> false,
+                new RetryListeners<>(),
+                Sleeper.system(),
+                Clock.system(),
+                null, null,
+                null, null, null, null
+        ));
     }
 
     @Test
     void testConstructorWithNullTags() {
-        // RetryConfig requires non-null tags, so passing null should throw NPE
-        assertThrows(NullPointerException.class, () -> {
-            new RetryConfig<>(
-                    "test", "id", null,
-                    new FixedAttemptsStop(3),
-                    new FixedBackoff(Duration.ZERO),
-                    (result, error, attempt, maxAttempts) -> false,
-                    new RetryListeners<>(),
-                    Sleeper.system(),
-                    Clock.system(),
-                    null, null,
-                    null, null, null, null
-            );
-        });
+        assertThrows(NullPointerException.class, () -> new RetryConfig<>(
+                "test", "id", null,
+                new FixedAttemptsStop(3),
+                new FixedBackoff(Duration.ZERO),
+                (result, error, attempt, maxAttempts) -> false,
+                new RetryListeners<>(),
+                Sleeper.system(),
+                Clock.system(),
+                null, null,
+                null, null, null, null
+        ));
     }
 
     @Test
     void testRun() {
         RetryPolicy<String> policy = (result, error, attempt, maxAttempts) -> false;
-        RetryConfig<String> config = new RetryConfig<String>(
+        RetryConfig<String> config = new RetryConfig<>(
                 "test", "id", Map.of(),
                 new FixedAttemptsStop(1),
                 new FixedBackoff(Duration.ZERO),
@@ -113,7 +106,7 @@ class RetryConfigTest {
     void testRunAsync() throws Exception {
         Executor executor = Executors.newSingleThreadExecutor();
         RetryPolicy<String> policy = (result, error, attempt, maxAttempts) -> false;
-        RetryConfig<String> config = new RetryConfig<String>(
+        RetryConfig<String> config = new RetryConfig<>(
                 "test", "id", Map.of(),
                 new FixedAttemptsStop(1),
                 new FixedBackoff(Duration.ZERO),
@@ -134,7 +127,7 @@ class RetryConfigTest {
     @Test
     void testRunAsyncWithNullExecutor() {
         RetryPolicy<String> policy = (result, error, attempt, maxAttempts) -> false;
-        RetryConfig<String> config = new RetryConfig<String>(
+        RetryConfig<String> config = new RetryConfig<>(
                 "test", "id", Map.of(),
                 new FixedAttemptsStop(1),
                 new FixedBackoff(Duration.ZERO),
@@ -147,9 +140,7 @@ class RetryConfigTest {
                 null, null, null
         );
         
-        assertThrows(NullPointerException.class, () -> {
-            config.runAsync(() -> "success", null);
-        });
+        assertThrows(NullPointerException.class, () -> config.runAsync(() -> "success", null));
     }
 
     @Test
