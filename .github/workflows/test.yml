@@ -1,0 +1,222 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+      - multi-artifact-system
+
+jobs:
+  test-core:
+    name: Test flexretry-core on ${{ matrix.os }} with Java ${{ matrix.java }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        java: [11, 17, 21]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: 'temurin'
+          cache: 'maven'
+      
+      - name: Test flexretry-core module
+        run: mvn clean test -pl flexretry-core
+      
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-core-java${{ matrix.java }}-${{ matrix.os }}
+          path: |
+            **/target/surefire-reports
+            **/target/failsafe-reports
+          retention-days: 7
+          if-no-files-found: ignore
+
+  test-control:
+    name: Test flexretry-control on ${{ matrix.os }} with Java ${{ matrix.java }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        java: [11, 17, 21]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: 'temurin'
+          cache: 'maven'
+      
+      - name: Test flexretry-control module
+        run: mvn clean test -pl flexretry-control
+      
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-control-java${{ matrix.java }}-${{ matrix.os }}
+          path: |
+            **/target/surefire-reports
+            **/target/failsafe-reports
+          retention-days: 7
+          if-no-files-found: ignore
+
+  test-observability:
+    name: Test flexretry-observability on ${{ matrix.os }} with Java ${{ matrix.java }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        java: [11, 17, 21]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: 'temurin'
+          cache: 'maven'
+      
+      - name: Test flexretry-observability module
+        run: mvn clean test -pl flexretry-observability
+      
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-observability-java${{ matrix.java }}-${{ matrix.os }}
+          path: |
+            **/target/surefire-reports
+            **/target/failsafe-reports
+          retention-days: 7
+          if-no-files-found: ignore
+
+  test-observability-simple:
+    name: Test flexretry-observability-simple on ${{ matrix.os }} with Java ${{ matrix.java }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        java: [11, 17, 21]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: 'temurin'
+          cache: 'maven'
+      
+      - name: Test flexretry-observability-simple module
+        run: mvn clean test -pl flexretry-observability-simple
+      
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-observability-simple-java${{ matrix.java }}-${{ matrix.os }}
+          path: |
+            **/target/surefire-reports
+            **/target/failsafe-reports
+          retention-days: 7
+          if-no-files-found: ignore
+
+  test-bom:
+    name: Test flexretry-bom on ${{ matrix.os }} with Java ${{ matrix.java }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        java: [11, 17, 21]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: 'temurin'
+          cache: 'maven'
+      
+      - name: Test flexretry-bom module
+        run: mvn clean test -pl flexretry-bom
+      
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-bom-java${{ matrix.java }}-${{ matrix.os }}
+          path: |
+            **/target/surefire-reports
+            **/target/failsafe-reports
+          retention-days: 7
+          if-no-files-found: ignore
+
+  test-all:
+    name: Test entire project on ${{ matrix.os }} with Java ${{ matrix.java }}
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        java: [11, 17, 21]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: 'temurin'
+          cache: 'maven'
+      
+      - name: Test entire project
+        run: mvn clean test
+      
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-all-java${{ matrix.java }}-${{ matrix.os }}
+          path: |
+            **/target/surefire-reports
+            **/target/failsafe-reports
+          retention-days: 7
+          if-no-files-found: ignore
+
