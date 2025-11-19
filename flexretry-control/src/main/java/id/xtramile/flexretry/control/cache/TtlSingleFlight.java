@@ -16,6 +16,9 @@ public final class TtlSingleFlight<T> {
         Entry<T> entry = cache.get(key);
 
         if (entry == null || entry.isExpired()) {
+            if (entry != null) {
+                cache.remove(key, entry);
+            }
             return Optional.empty();
         }
 
@@ -27,6 +30,10 @@ public final class TtlSingleFlight<T> {
 
         if (entry != null && !entry.isExpired()) {
             return entry.value;
+        }
+
+        if (entry != null) {
+            cache.remove(key, entry);
         }
 
         T result = sf.execute(key, supplier);

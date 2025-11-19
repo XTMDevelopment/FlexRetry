@@ -12,6 +12,7 @@ public class WindowedCounterRetryBudget implements RetryBudget {
 
     private int used = 0;
     private long windowStart = System.nanoTime();
+    private final Object lock = new Object();
 
     public WindowedCounterRetryBudget(int limit, long windowDuration, TimeUnit unit) {
         if (limit < 0) {
@@ -28,14 +29,16 @@ public class WindowedCounterRetryBudget implements RetryBudget {
 
     @Override
     public boolean tryAcquire() {
-        rollWindowIfNeeded();
+        synchronized (lock) {
+            rollWindowIfNeeded();
 
-        if (used < limit) {
-            used++;
-            return true;
+            if (used < limit) {
+                used++;
+                return true;
+            }
+
+            return false;
         }
-
-        return false;
     }
 
     private void rollWindowIfNeeded() {
@@ -46,8 +49,11 @@ public class WindowedCounterRetryBudget implements RetryBudget {
         }
     }
 
-    public synchronized int remainingInWindow() {
-        return Math.max(0, limit - used);
+    public int remainingInWindow() {
+        synchronized (lock) {
+            rollWindowIfNeeded();
+            return Math.max(0, limit - used);
+        }
     }
 
     public int limit() {

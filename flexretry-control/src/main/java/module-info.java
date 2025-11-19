@@ -1,5 +1,5 @@
 module id.xtramile.flexretry.control {
-    requires id.xtramile.flexretry.core;
+    requires transitive id.xtramile.flexretry.core;
     exports id.xtramile.flexretry.control;
     exports id.xtramile.flexretry.control.batch;
     exports id.xtramile.flexretry.control.breaker;
