@@ -3,6 +3,8 @@ package id.xtramile.flexretry.strategy.stop;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Stop if ANY child strategy says to stop
@@ -23,5 +25,15 @@ public final class CompositeStop implements StopStrategy {
         }
 
         return false;
+    }
+
+    @Override
+    public Optional<Integer> maxAttempts() {
+        return list.stream()
+                .filter(Objects::nonNull)
+                .map(StopStrategy::maxAttempts)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .min(Integer::compareTo);
     }
 }
