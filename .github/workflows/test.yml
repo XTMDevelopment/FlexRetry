@@ -66,6 +66,9 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
       
+      - name: Install flexretry-core dependency
+        run: mvn clean install -pl flexretry-core -DskipTests
+      
       - name: Test flexretry-control module
         run: mvn clean test -pl flexretry-control
       
@@ -101,6 +104,9 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
       
+      - name: Install flexretry-core dependency
+        run: mvn clean install -pl flexretry-core -DskipTests
+      
       - name: Test flexretry-observability module
         run: mvn clean test -pl flexretry-observability
       
@@ -135,6 +141,12 @@ jobs:
           java-version: ${{ matrix.java }}
           distribution: 'temurin'
           cache: 'maven'
+      
+      - name: Install flexretry-core dependency
+        run: mvn clean install -pl flexretry-core -DskipTests
+      
+      - name: Install flexretry-observability dependency
+        run: mvn clean install -pl flexretry-observability -DskipTests
       
       - name: Test flexretry-observability-simple module
         run: mvn clean test -pl flexretry-observability-simple
