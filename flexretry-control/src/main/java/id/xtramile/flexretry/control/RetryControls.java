@@ -316,8 +316,4 @@ public final class RetryControls {
             throw new RuntimeException(e);
         }
     }
-
-    public static Callable<String> bulkhead(Bulkhead bulkhead, Object o) {
-        return null;
-    }
 }

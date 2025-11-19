@@ -144,7 +144,7 @@ class RetryControlsIntegrationTest {
         id.xtramile.flexretry.RetryException exception = assertThrows(id.xtramile.flexretry.RetryException.class,
                 () -> Retry.<String>newBuilder()
                     .maxAttempts(5)
-                    .execute(RetryControls.circuitBreak(breaker, (Supplier<String>) () -> "success"))
+                    .execute(RetryControls.circuitBreak(breaker, () -> "success"))
                     .getResult());
         
         assertInstanceOf(CircuitOpenException.class, exception.getCause());
@@ -175,7 +175,7 @@ class RetryControlsIntegrationTest {
         id.xtramile.flexretry.RetryException exception = assertThrows(id.xtramile.flexretry.RetryException.class,
                 () -> Retry.<String>newBuilder()
                     .maxAttempts(3)
-                    .execute(RetryControls.rateLimited((Supplier<String>) () -> "success", limiter))
+                    .execute(RetryControls.rateLimited(() -> "success", limiter))
                     .getResult());
         
         assertInstanceOf(RateLimitExceededException.class, exception.getCause());
@@ -206,7 +206,7 @@ class RetryControlsIntegrationTest {
         id.xtramile.flexretry.RetryException exception = assertThrows(id.xtramile.flexretry.RetryException.class,
                 () -> Retry.<String>newBuilder()
                     .maxAttempts(3)
-                    .execute(RetryControls.concurrencyLimited((Supplier<String>) () -> "success", limiter))
+                    .execute(RetryControls.concurrencyLimited(() -> "success", limiter))
                     .getResult());
         
         assertInstanceOf(ConcurrencyLimitedException.class, exception.getCause());
