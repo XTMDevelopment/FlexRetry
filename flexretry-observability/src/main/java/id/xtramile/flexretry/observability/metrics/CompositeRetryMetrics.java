@@ -13,17 +13,14 @@ public class CompositeRetryMetrics<T> implements RetryMetrics<T> {
 
     public CompositeRetryMetrics(List<? extends  RetryMetrics<T>> delegates) {
         Objects.requireNonNull(delegates, "delegates");
+
         this.delegates = List.copyOf(delegates);
     }
 
     @SafeVarargs
     public static <T> CompositeRetryMetrics<T> of(RetryMetrics<T>... metrics) {
         List<RetryMetrics<T>> list = new ArrayList<>();
-
-        if (metrics != null) {
-            Collections.addAll(list, metrics);
-        }
-
+        Collections.addAll(list, metrics);
         return new CompositeRetryMetrics<>(list);
     }
 
