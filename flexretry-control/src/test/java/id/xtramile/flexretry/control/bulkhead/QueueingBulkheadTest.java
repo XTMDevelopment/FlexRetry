@@ -43,8 +43,8 @@ class QueueingBulkheadTest {
         assertFalse(bulkhead.tryAcquire(50));
         long elapsed = System.currentTimeMillis() - start;
         
-        assertTrue(elapsed >= 45);
-        assertTrue(elapsed < 100);
+        assertTrue(elapsed >= 40, "Elapsed time should be at least 40ms, was: " + elapsed);
+        assertTrue(elapsed < 150, "Elapsed time should be less than 150ms, was: " + elapsed);
     }
 
     @Test

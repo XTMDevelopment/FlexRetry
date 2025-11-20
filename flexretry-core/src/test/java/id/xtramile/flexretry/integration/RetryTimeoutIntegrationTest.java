@@ -27,13 +27,13 @@ class RetryTimeoutIntegrationTest {
             assertThrows(RetryException.class,
                     () -> Retry.<String>newBuilder()
                         .maxAttempts(2)
-                        .attemptTimeout(Duration.ofMillis(50))
+                        .attemptTimeout(Duration.ofMillis(100))
                         .attemptExecutor(executor)
                         .retryOn(RuntimeException.class)
                         .execute((Callable<String>) () -> {
                             attempts.incrementAndGet();
 
-                            Thread.sleep(100);
+                            Thread.sleep(200);
 
                             return "success";
                         })

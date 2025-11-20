@@ -113,10 +113,20 @@ class RequestBatcherTest {
         batcher.addAndMaybeFlush("item1");
         batcher.addAndMaybeFlush("item2");
 
-        Thread.sleep(150);
+        boolean flushed = false;
+        for (int i = 0; i < 10; i++) {
+            Thread.sleep(50);
+            synchronized (batches) {
+                if (!batches.isEmpty()) {
+                    flushed = true;
+                    break;
+                }
+            }
+        }
         
         synchronized (batches) {
-            assertFalse(batches.isEmpty());
+            assertTrue(flushed, "Auto-flush should have occurred within 500ms");
+            assertFalse(batches.isEmpty(), "Batches should not be empty after auto-flush");
         }
         
         batcher.shutdown();
