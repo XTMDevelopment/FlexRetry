@@ -67,7 +67,7 @@ jobs:
           cache: 'maven'
       
       - name: Install flexretry-core dependency
-        run: mvn clean install -pl flexretry-core -DskipTests -Dgpg.skip=true
+        run: mvn clean install -pl flexretry-core -DskipTests
       
       - name: Test flexretry-control module
         run: mvn clean test -pl flexretry-control
@@ -105,7 +105,7 @@ jobs:
           cache: 'maven'
       
       - name: Install flexretry-core dependency
-        run: mvn clean install -pl flexretry-core -DskipTests -Dgpg.skip=true
+        run: mvn clean install -pl flexretry-core -DskipTests
       
       - name: Test flexretry-observability module
         run: mvn clean test -pl flexretry-observability
@@ -143,10 +143,10 @@ jobs:
           cache: 'maven'
       
       - name: Install flexretry-core dependency
-        run: mvn clean install -pl flexretry-core -DskipTests -Dgpg.skip=true
+        run: mvn clean install -pl flexretry-core -DskipTests
       
       - name: Install flexretry-observability dependency
-        run: mvn clean install -pl flexretry-observability -DskipTests -Dgpg.skip=true
+        run: mvn clean install -pl flexretry-observability -DskipTests
       
       - name: Test flexretry-observability-simple module
         run: mvn clean test -pl flexretry-observability-simple
