@@ -25,21 +25,35 @@ class RetryTimeoutIntegrationTest {
             AtomicInteger attempts = new AtomicInteger(0);
 
             assertThrows(RetryException.class,
-                    () -> Retry.<String>newBuilder()
-                        .maxAttempts(2)
-                        .attemptTimeout(Duration.ofMillis(100))
-                        .attemptExecutor(executor)
-                        .retryOn(RuntimeException.class)
-                        .execute((Callable<String>) () -> {
-                            attempts.incrementAndGet();
+                    () -> {
+                        long startTime = System.currentTimeMillis();
 
-                            Thread.sleep(200);
+                        try {
+                            Retry.<String>newBuilder()
+                                .maxAttempts(2)
+                                .attemptTimeout(Duration.ofMillis(100))
+                                .attemptExecutor(executor)
+                                .retryOn(RuntimeException.class)
+                                .execute((Callable<String>) () -> {
+                                    int attemptNum = attempts.incrementAndGet();
+                                    long attemptStart = System.currentTimeMillis();
 
-                            return "success";
-                        })
-                        .getResult());
+                                    Thread.sleep(200);
+                                    
+                                    long attemptElapsed = System.currentTimeMillis() - attemptStart;
+                                    System.out.println("Attempt " + attemptNum + " took " + attemptElapsed + "ms");
+                                    
+                                    return "success";
+                                })
+                                .getResult();
 
-            assertTrue(attempts.get() >= 1);
+                        } finally {
+                            long totalElapsed = System.currentTimeMillis() - startTime;
+                            System.out.println("Total test execution took " + totalElapsed + "ms");
+                        }
+                    });
+
+            assertTrue(attempts.get() >= 1, "Should have at least one attempt");
         } finally {
             executor.shutdown();
         }
@@ -52,21 +66,35 @@ class RetryTimeoutIntegrationTest {
             AtomicInteger attempts = new AtomicInteger(0);
 
             assertThrows(RetryException.class,
-                    () -> Retry.<String>newBuilder()
-                        .maxAttempts(2)
-                        .attemptTimeouts(new ExponentialTimeout(Duration.ofMillis(50), 2.0, Duration.ofSeconds(10)))
-                        .attemptExecutor(executor)
-                        .retryOn(RuntimeException.class)
-                        .execute((Callable<String>) () -> {
-                            attempts.incrementAndGet();
+                    () -> {
+                        long startTime = System.currentTimeMillis();
 
-                            Thread.sleep(200);
+                        try {
+                            Retry.<String>newBuilder()
+                                .maxAttempts(2)
+                                .attemptTimeouts(new ExponentialTimeout(Duration.ofMillis(50), 2.0, Duration.ofSeconds(10)))
+                                .attemptExecutor(executor)
+                                .retryOn(RuntimeException.class)
+                                .execute((Callable<String>) () -> {
+                                    int attemptNum = attempts.incrementAndGet();
+                                    long attemptStart = System.currentTimeMillis();
 
-                            return "success";
-                        })
-                        .getResult());
+                                    Thread.sleep(200);
+                                    
+                                    long attemptElapsed = System.currentTimeMillis() - attemptStart;
+                                    System.out.println("Attempt " + attemptNum + " took " + attemptElapsed + "ms");
+                                    
+                                    return "success";
+                                })
+                                .getResult();
 
-            assertTrue(attempts.get() >= 1);
+                        } finally {
+                            long totalElapsed = System.currentTimeMillis() - startTime;
+                            System.out.println("Total test execution took " + totalElapsed + "ms");
+                        }
+                    });
+
+            assertTrue(attempts.get() >= 1, "Should have at least one attempt");
         } finally {
             executor.shutdown();
         }
