@@ -237,5 +237,3 @@ class ConcurrencyLimiterIntegrationTest {
         assertEquals(2, limiter.getLimit());
     }
 }
-
-

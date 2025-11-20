@@ -241,21 +241,28 @@ class CircuitBreakerIntegrationTest {
     }
 
     @Test
-    void testRetryWithCustomExponentialBackoffPolicy() {
+    void testRetryWithCustomExponentialBackoffPolicy() throws InterruptedException {
         ExponentialBackoffPolicy policy = new ExponentialBackoffPolicy(2);
-        CircuitBreaker breaker = new CircuitBreaker(policy, Duration.ofSeconds(1));
+        CircuitBreaker breaker = new CircuitBreaker(policy, Duration.ofMillis(100));
 
         breaker.onFailure();
         breaker.onFailure();
 
         assertFalse(breaker.allow());
 
+        Thread.sleep(150);
+        assertTrue(breaker.allow());
+
         policy.reset();
+
         breaker.onFailure();
         assertTrue(breaker.allow());
 
         breaker.onFailure();
+        assertTrue(breaker.allow());
 
+        breaker.onFailure();
+        breaker.onFailure();
         assertFalse(breaker.allow());
     }
 
@@ -283,4 +290,3 @@ class CircuitBreakerIntegrationTest {
         assertTrue(breaker.allow());
     }
 }
-

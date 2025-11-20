@@ -5,7 +5,13 @@ import java.util.function.Function;
 
 public interface BatchRetryStrategy<I> {
     static <I> BatchRetryStrategy<I> of(Function<List<?>, I> fn, Function<I, I> identity) {
-        return ((originalInput, failures) -> fn.apply(failures));
+        return ((originalInput, failures) -> {
+            if (failures.isEmpty()) {
+                return identity.apply(originalInput);
+            }
+
+            return fn.apply(failures);
+        });
     }
 
     I reduce(I originalInput, List<?> failures);

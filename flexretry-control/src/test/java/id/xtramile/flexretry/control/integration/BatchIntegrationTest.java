@@ -194,5 +194,3 @@ class BatchIntegrationTest {
         assertEquals(failures, result);
     }
 }
-
-

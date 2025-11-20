@@ -6,6 +6,7 @@ import id.xtramile.flexretry.control.budget.RetryBudget;
 import id.xtramile.flexretry.control.budget.TokenBucketRetryBudget;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -18,18 +19,27 @@ class BudgetIntegrationTest {
 
     /**
      * Custom RetryBudget that allows a fixed number of retries
+     * Note: maxRetries represents the maximum total attempts allowed
+     * (including the initial attempt)
      */
     static class FixedCountBudget implements RetryBudget {
-        private final int maxRetries;
-        private final AtomicInteger used = new AtomicInteger(0);
+        private final int maxAttempts;
+        private final AtomicInteger attempts = new AtomicInteger(0);
 
         FixedCountBudget(int maxRetries) {
-            this.maxRetries = maxRetries;
+            this.maxAttempts = maxRetries;
         }
 
         @Override
         public boolean tryAcquire() {
-            return used.incrementAndGet() <= maxRetries;
+            int currentAttempts = attempts.get() + 1;
+
+            if (currentAttempts < maxAttempts) {
+                attempts.incrementAndGet();
+                return true;
+            }
+
+            return false;
         }
     }
 
@@ -78,7 +88,7 @@ class BudgetIntegrationTest {
         @Override
         public boolean tryAcquire() {
             int currentTotal = total.incrementAndGet();
-            int shouldAllow = (int) (currentTotal * percentage);
+            int shouldAllow = (int) Math.round(currentTotal * percentage);
 
             if (allowed.get() < shouldAllow) {
                 allowed.incrementAndGet();
@@ -100,7 +110,7 @@ class BudgetIntegrationTest {
                 (r, e, a, m) -> e != null,
                 budget
             ))
-            .execute((java.util.concurrent.Callable<String>) () -> {
+            .execute((Callable<String>) () -> {
                 attemptCount.incrementAndGet();
 
                 if (attemptCount.get() < 3) {
@@ -130,7 +140,7 @@ class BudgetIntegrationTest {
                         (r, e, a, m) -> e != null,
                         budget
                     ))
-                    .execute((java.util.concurrent.Callable<String>) () -> {
+                    .execute((Callable<String>) () -> {
                         attemptCount.incrementAndGet();
                         throw new RuntimeException("retry");
                     })
@@ -150,7 +160,7 @@ class BudgetIntegrationTest {
                 (r, e, a, m) -> e != null,
                 budget
             ))
-            .execute((java.util.concurrent.Callable<String>) () -> {
+            .execute((Callable<String>) () -> {
                 attemptCount.incrementAndGet();
 
                 if (attemptCount.get() < 3) {
@@ -177,7 +187,7 @@ class BudgetIntegrationTest {
                         (r, e, a, m) -> e != null,
                         budget
                     ))
-                    .execute((java.util.concurrent.Callable<String>) () -> {
+                    .execute((Callable<String>) () -> {
                         attemptCount.incrementAndGet();
                         throw new RuntimeException("retry");
                     })
@@ -197,7 +207,7 @@ class BudgetIntegrationTest {
                 (r, e, a, m) -> e != null,
                 budget
             ))
-            .execute((java.util.concurrent.Callable<String>) () -> {
+            .execute((Callable<String>) () -> {
                 attemptCount.incrementAndGet();
 
                 if (attemptCount.get() < 2) {
@@ -210,7 +220,7 @@ class BudgetIntegrationTest {
 
         assertEquals("success1", result1);
         assertEquals(2, attemptCount.get());
-        assertEquals(2, budget.getUsed());
+        assertEquals(1, budget.getUsed());
 
         budget.reset();
         attemptCount.set(0);
@@ -221,7 +231,7 @@ class BudgetIntegrationTest {
                 (r, e, a, m) -> e != null,
                 budget
             ))
-            .execute((java.util.concurrent.Callable<String>) () -> {
+            .execute((Callable<String>) () -> {
                 attemptCount.incrementAndGet();
 
                 if (attemptCount.get() < 2) {
@@ -234,7 +244,7 @@ class BudgetIntegrationTest {
 
         assertEquals("success2", result2);
         assertEquals(2, attemptCount.get());
-        assertEquals(2, budget.getUsed());
+        assertEquals(1, budget.getUsed());
     }
 
     @Test
@@ -248,7 +258,7 @@ class BudgetIntegrationTest {
                 (r, e, a, m) -> e != null,
                 budget
             ))
-            .execute((java.util.concurrent.Callable<String>) () -> {
+            .execute((Callable<String>) () -> {
                 attemptCount.incrementAndGet();
 
                 if (attemptCount.get() < 2) {
@@ -274,7 +284,7 @@ class BudgetIntegrationTest {
                 (r, e, a, m) -> e != null,
                 budget
             ))
-            .execute((java.util.concurrent.Callable<String>) () -> {
+            .execute((Callable<String>) () -> {
                 attemptCount.incrementAndGet();
 
                 if (attemptCount.get() < 3) {

@@ -155,5 +155,3 @@ class CombinedControlsIntegrationTest {
         assertTrue(attemptCount.get() >= 2);
     }
 }
-
-

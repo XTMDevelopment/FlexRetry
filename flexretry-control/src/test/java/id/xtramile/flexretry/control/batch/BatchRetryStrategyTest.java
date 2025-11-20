@@ -69,8 +69,8 @@ class BatchRetryStrategyTest {
         List<String> failures = List.of();
         
         String result = strategy.reduce(original, failures);
-        
-        assertEquals("empty", result);
+
+        assertEquals("original", result);
     }
 
     @Test
