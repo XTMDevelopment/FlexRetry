@@ -246,7 +246,7 @@ class RetryExecutorTest {
     void testAttemptTimeoutStrategy() {
         ExecutorService executorService = Executors.newSingleThreadExecutor();
         try {
-            AttemptTimeoutStrategy timeoutStrategy = new FixedTimeout(Duration.ofMillis(50));
+            AttemptTimeoutStrategy timeoutStrategy = new FixedTimeout(Duration.ofMillis(100));
             RetryExecutor<String> executor = createExecutorWithTimeoutStrategy(
                     new FixedAttemptsStop(1),
                     new FixedBackoff(Duration.ZERO),
@@ -254,7 +254,7 @@ class RetryExecutorTest {
                     executorService,
                     timeoutStrategy,
                     () -> {
-                        Thread.sleep(100);
+                        Thread.sleep(200);
                         return "success";
                     }
             );
