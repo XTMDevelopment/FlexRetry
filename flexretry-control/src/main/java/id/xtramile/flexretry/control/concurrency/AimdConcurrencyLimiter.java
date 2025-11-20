@@ -5,7 +5,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class AimdConcurrencyLimiter implements ConcurrencyLimiter {
     private final int max;
     private final AtomicInteger inFlight = new AtomicInteger(0);
-    private volatile int limit;
+    private int limit;
 
     public AimdConcurrencyLimiter(int initial, int max) {
         if (initial < 1) {

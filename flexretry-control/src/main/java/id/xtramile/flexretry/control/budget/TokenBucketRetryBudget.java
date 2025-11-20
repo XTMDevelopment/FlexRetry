@@ -2,17 +2,13 @@ package id.xtramile.flexretry.control.budget;
 
 import java.util.concurrent.TimeUnit;
 
-/**
- * Simple token-bucket budget shared across callers.
- * Refill rate: "tokensPerSecond" (can be fractional)
- * Burst capacity: "capacity"
- */
 public final class TokenBucketRetryBudget implements RetryBudget {
     private final double tokensPerSecond;
     private final double capacity;
 
     private double tokens;
     private long lastRefillNanoTime;
+    private final Object lock = new Object();
 
     public TokenBucketRetryBudget(double tokensPerSecond, double capacity) {
         if (tokensPerSecond < 0) {
@@ -31,14 +27,16 @@ public final class TokenBucketRetryBudget implements RetryBudget {
 
     @Override
     public boolean tryAcquire() {
-        refill();
+        synchronized (lock) {
+            refill();
 
-        if (tokens >= 1.0) {
-            tokens -= 1.0;
-            return true;
+            if (tokens >= 1.0) {
+                tokens -= 1.0;
+                return true;
+            }
+
+            return false;
         }
-
-        return false;
     }
 
     private void refill() {
@@ -55,8 +53,11 @@ public final class TokenBucketRetryBudget implements RetryBudget {
         lastRefillNanoTime = now;
     }
 
-    public synchronized double availableTokens() {
-        return tokens;
+    public double availableTokens() {
+        synchronized (lock) {
+            refill();
+            return tokens;
+        }
     }
 
     public double capacity() {

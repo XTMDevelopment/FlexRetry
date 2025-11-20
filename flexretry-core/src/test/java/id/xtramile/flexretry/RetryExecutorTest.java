@@ -224,19 +224,31 @@ class RetryExecutorTest {
     void testAttemptTimeout() {
         ExecutorService executorService = Executors.newSingleThreadExecutor();
         try {
+            long startTime = System.currentTimeMillis();
+            
             RetryExecutor<String> executor = createExecutorWithTimeout(
                     new FixedAttemptsStop(1),
                     new FixedBackoff(Duration.ZERO),
                     (result, error, attempt, maxAttempts) -> false,
-                    Duration.ofMillis(50),
+                    Duration.ofMillis(100),
                     executorService,
                     () -> {
-                        Thread.sleep(100);
+                        long attemptStart = System.currentTimeMillis();
+                        Thread.sleep(300);
+                        long attemptElapsed = System.currentTimeMillis() - attemptStart;
+                        System.out.println("testAttemptTimeout: Attempt took " + attemptElapsed + "ms");
                         return "success";
                     }
             );
 
-            assertThrows(RetryException.class, executor::run);
+            assertThrows(RetryException.class, () -> {
+                try {
+                    executor.run();
+                } finally {
+                    long totalElapsed = System.currentTimeMillis() - startTime;
+                    System.out.println("testAttemptTimeout: Total execution took " + totalElapsed + "ms");
+                }
+            });
         } finally {
             executorService.shutdown();
         }
@@ -246,7 +258,9 @@ class RetryExecutorTest {
     void testAttemptTimeoutStrategy() {
         ExecutorService executorService = Executors.newSingleThreadExecutor();
         try {
-            AttemptTimeoutStrategy timeoutStrategy = new FixedTimeout(Duration.ofMillis(50));
+            long startTime = System.currentTimeMillis();
+            
+            AttemptTimeoutStrategy timeoutStrategy = new FixedTimeout(Duration.ofMillis(100));
             RetryExecutor<String> executor = createExecutorWithTimeoutStrategy(
                     new FixedAttemptsStop(1),
                     new FixedBackoff(Duration.ZERO),
@@ -254,12 +268,22 @@ class RetryExecutorTest {
                     executorService,
                     timeoutStrategy,
                     () -> {
-                        Thread.sleep(100);
+                        long attemptStart = System.currentTimeMillis();
+                        Thread.sleep(300);
+                        long attemptElapsed = System.currentTimeMillis() - attemptStart;
+                        System.out.println("testAttemptTimeoutStrategy: Attempt took " + attemptElapsed + "ms");
                         return "success";
                     }
             );
 
-            assertThrows(RetryException.class, executor::run);
+            assertThrows(RetryException.class, () -> {
+                try {
+                    executor.run();
+                } finally {
+                    long totalElapsed = System.currentTimeMillis() - startTime;
+                    System.out.println("testAttemptTimeoutStrategy: Total execution took " + totalElapsed + "ms");
+                }
+            });
         } finally {
             executorService.shutdown();
         }

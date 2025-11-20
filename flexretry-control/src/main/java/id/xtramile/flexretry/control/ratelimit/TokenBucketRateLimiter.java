@@ -36,7 +36,8 @@ public final class TokenBucketRateLimiter implements RateLimiter {
 
     public void refill() {
         long now = System.nanoTime();
-        long elapsed = now - lastRefillNanos;
+        long lastRefill = lastRefillNanos;
+        long elapsed = now - lastRefill;
 
         if (elapsed < refillPerNanos) {
             return;
@@ -47,7 +48,12 @@ public final class TokenBucketRateLimiter implements RateLimiter {
             return;
         }
 
-        tokens.updateAndGet(curr -> Math.min(capacity, curr + add));
-        lastRefillNanos = now;
+        if (lastRefillNanos == lastRefill) {
+            tokens.updateAndGet(curr -> Math.min(capacity, curr + add));
+
+            if (lastRefillNanos == lastRefill) {
+                lastRefillNanos = now;
+            }
+        }
     }
 }

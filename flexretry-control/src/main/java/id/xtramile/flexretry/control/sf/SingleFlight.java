@@ -13,42 +13,61 @@ public final class SingleFlight<T> {
         CompletableFuture<T> future = inflight.computeIfAbsent(key, k -> new CompletableFuture<>());
 
         if (future.isDone()) {
+            inflight.remove(key, future);
             return execute(key, task);
         }
 
-        if (future.getNumberOfDependents() > 0) {
+        CompletableFuture<T> current = inflight.get(key);
+        if (current != null && current != future) {
+            return getResult(current);
+        }
+
+        if (future.isDone()) {
             try {
-                return future.get();
-
-            } catch (ExecutionException ee) {
-                Throwable cause = ee.getCause() == null ? ee : ee.getCause();
-
-                if (cause instanceof Exception) {
-                    throw (Exception) cause;
-                } else if (cause instanceof Error) {
-                    throw (Error) cause;
-                }
-
-                throw new RuntimeException(cause);
+                return getResult(future);
+            } finally {
+                inflight.remove(key, future);
             }
         }
 
+        if (inflight.get(key) == future && !future.isDone()) {
+            try {
+                T result = task.call();
+                future.complete(result);
+                return result;
+
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
+                throwException(t);
+                return null;
+
+            } finally {
+                inflight.remove(key, future);
+            }
+        } else {
+            return getResult(future);
+        }
+    }
+
+    private T getResult(CompletableFuture<T> future) throws Exception {
         try {
-            T result = task.call();
-            future.complete(result);
-            return result;
+            return future.get();
 
-        } catch (Throwable t) {
-            future.completeExceptionally(t);
-
-            if (t instanceof Exception) {
-                throw (Exception) t;
-            } else {
-                throw (Error) t;
-            }
-
-        } finally {
-            inflight.remove(key, future);
+        } catch (ExecutionException ee) {
+            Throwable cause = ee.getCause() == null ? ee : ee.getCause();
+            throwException(cause);
+            return null;
         }
+    }
+
+    private static void throwException(Throwable cause) throws Exception {
+        if (cause instanceof Exception) {
+            throw (Exception) cause;
+
+        } else if (cause instanceof Error) {
+            throw (Error) cause;
+        }
+
+        throw new RuntimeException(cause);
     }
 }

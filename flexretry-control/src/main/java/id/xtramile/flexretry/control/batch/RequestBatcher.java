@@ -43,4 +43,16 @@ public final class RequestBatcher<K, R> {
 
         return transport.apply(batch);
     }
+
+    public void shutdown() {
+        ses.shutdown();
+        try {
+            if (!ses.awaitTermination(5, TimeUnit.SECONDS)) {
+                ses.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            ses.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
 }
