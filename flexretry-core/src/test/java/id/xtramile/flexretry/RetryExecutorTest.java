@@ -228,10 +228,10 @@ class RetryExecutorTest {
                     new FixedAttemptsStop(1),
                     new FixedBackoff(Duration.ZERO),
                     (result, error, attempt, maxAttempts) -> false,
-                    Duration.ofMillis(50),
+                    Duration.ofMillis(100),
                     executorService,
                     () -> {
-                        Thread.sleep(100);
+                        Thread.sleep(200);
                         return "success";
                     }
             );

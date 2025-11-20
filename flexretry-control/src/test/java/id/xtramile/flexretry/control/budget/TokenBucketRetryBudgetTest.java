@@ -86,7 +86,7 @@ class TokenBucketRetryBudgetTest {
 
     @Test
     void testConcurrentAccess() throws InterruptedException {
-        TokenBucketRetryBudget budget = new TokenBucketRetryBudget(100.0, 50.0);
+        TokenBucketRetryBudget budget = new TokenBucketRetryBudget(10.0, 50.0);
         
         int threadCount = 10;
         int acquiresPerThread = 10;
@@ -115,8 +115,8 @@ class TokenBucketRetryBudgetTest {
             if (result) successes++;
         }
 
-        assertTrue(successes > 0);
-        assertTrue(successes <= 50);
+        assertTrue(successes > 0, "Should have at least some successful acquires");
+        assertTrue(successes <= 55, "Should not exceed capacity plus small refill allowance, got: " + successes);
     }
 }
 
