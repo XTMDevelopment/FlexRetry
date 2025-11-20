@@ -89,12 +89,12 @@ class SimpleTraceContextTest {
         assertEquals(Collections.emptyMap(), capturedAttributes[0]);
     }
 
-    @SuppressWarnings("WriteOnlyObject")
     @Test
     void testBuilder_SpanFactory_WithNull_ThrowsException() {
         SimpleTraceContext.Builder builder = SimpleTraceContext.builder();
 
-        assertThrows(NullPointerException.class, () -> builder.spanFactory(null));
+        builder.spanFactory(null);
+        assertThrows(NullPointerException.class, builder::build);
     }
 
     @Test
