@@ -32,7 +32,7 @@ jobs:
           cache: 'maven'
       
       - name: Test flexretry-core module
-        run: mvn clean test -pl flexretry-core
+        run: mvn clean test -pl flexretry-core -B -e
       
       - name: Upload test reports
         if: always()
@@ -67,10 +67,10 @@ jobs:
           cache: 'maven'
       
       - name: Install flexretry-core dependency
-        run: mvn clean install -pl flexretry-core -DskipTests
+        run: mvn clean install -pl flexretry-core -DskipTests -B -e
       
       - name: Test flexretry-control module
-        run: mvn clean test -pl flexretry-control
+        run: mvn clean test -pl flexretry-control -B -e
       
       - name: Upload test reports
         if: always()
@@ -105,10 +105,10 @@ jobs:
           cache: 'maven'
       
       - name: Install flexretry-core dependency
-        run: mvn clean install -pl flexretry-core -DskipTests
+        run: mvn clean install -pl flexretry-core -DskipTests -B -e
       
       - name: Test flexretry-observability module
-        run: mvn clean test -pl flexretry-observability
+        run: mvn clean test -pl flexretry-observability -B -e
       
       - name: Upload test reports
         if: always()
@@ -143,13 +143,13 @@ jobs:
           cache: 'maven'
       
       - name: Install flexretry-core dependency
-        run: mvn clean install -pl flexretry-core -DskipTests
+        run: mvn clean install -pl flexretry-core -DskipTests -B -e
       
       - name: Install flexretry-observability dependency
-        run: mvn clean install -pl flexretry-observability -DskipTests
+        run: mvn clean install -pl flexretry-observability -DskipTests -B -e
       
       - name: Test flexretry-observability-simple module
-        run: mvn clean test -pl flexretry-observability-simple
+        run: mvn clean test -pl flexretry-observability-simple -B -e
       
       - name: Upload test reports
         if: always()
@@ -184,7 +184,7 @@ jobs:
           cache: 'maven'
       
       - name: Test flexretry-bom module
-        run: mvn clean test -pl flexretry-bom
+        run: mvn clean test -pl flexretry-bom -B -e
       
       - name: Upload test reports
         if: always()
@@ -219,7 +219,7 @@ jobs:
           cache: 'maven'
       
       - name: Test entire project
-        run: mvn clean test
+        run: mvn clean test -B -e
       
       - name: Upload test reports
         if: always()
