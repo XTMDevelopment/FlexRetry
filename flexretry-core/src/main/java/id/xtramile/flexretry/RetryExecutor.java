@@ -11,13 +11,7 @@ import id.xtramile.flexretry.support.time.Clock;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CompletionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
 import java.util.function.Function;
 
 /**
@@ -106,7 +100,14 @@ public final class RetryExecutor<T> {
 
     private static Throwable unwrap(Throwable throwable) {
         if (throwable instanceof RuntimeException && throwable.getCause() != null) {
-            return throwable.getCause();
+            Throwable cause = throwable.getCause();
+
+            if (cause instanceof TimeoutException) {
+                return throwable;
+            }
+
+            return cause;
+            
         } else if (throwable instanceof CompletionException && throwable.getCause() != null) {
             return throwable.getCause();
         }
@@ -289,7 +290,7 @@ public final class RetryExecutor<T> {
             return future.get(perAttempt.toMillis(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException te) {
             future.cancel(true);
-            throw te;
+            throw new RuntimeException("Attempt timed out after " + perAttempt.toMillis() + "ms", te);
         }
     }
 

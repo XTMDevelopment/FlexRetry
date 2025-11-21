@@ -23,7 +23,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class LifecycleObservabilityIntegrationTest {
 
-    @SuppressWarnings("ConstantValue")
     @Test
     void testLifecycle_WithTracing_CreatesSpansAtCorrectTimes() {
         List<String> spanNames = new ArrayList<>();
