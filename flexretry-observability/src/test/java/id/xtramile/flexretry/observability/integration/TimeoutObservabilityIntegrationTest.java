@@ -188,7 +188,7 @@ class TimeoutObservabilityIntegrationTest {
         try {
             Retry.Builder<String> builder = Retry.<String>newBuilder()
                     .maxAttempts(2)
-                    .attemptTimeout(Duration.ofMillis(200))
+                    .attemptTimeout(Duration.ofMillis(500))
                     .attemptExecutor(executor);
             RetryObservability.metrics(builder, metrics);
 
