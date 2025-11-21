@@ -23,7 +23,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Integration tests for observability features working together with Retry framework.
+ * Basic integration tests for observability features working together with Retry framework.
+ * For more comprehensive integration tests, see:
+ * - RetryExecutorObservabilityIntegrationTest
+ * - BackoffStrategyObservabilityIntegrationTest
+ * - TimeoutObservabilityIntegrationTest
+ * - ConcurrentObservabilityIntegrationTest
+ * - RetryPolicyObservabilityIntegrationTest
+ * - LifecycleObservabilityIntegrationTest
+ * - AsyncObservabilityIntegrationTest
  */
 class ObservabilityIntegrationTest {
 
