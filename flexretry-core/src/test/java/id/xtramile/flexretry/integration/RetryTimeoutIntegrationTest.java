@@ -1,7 +1,7 @@
 package id.xtramile.flexretry.integration;
 
 import id.xtramile.flexretry.Retry;
-import id.xtramile.flexretry.RetryException;
+import id.xtramile.flexretry.exception.RetryException;
 import id.xtramile.flexretry.strategy.timeout.ExponentialTimeout;
 import org.junit.jupiter.api.Test;
 
@@ -11,7 +11,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Integration tests for timeout strategies

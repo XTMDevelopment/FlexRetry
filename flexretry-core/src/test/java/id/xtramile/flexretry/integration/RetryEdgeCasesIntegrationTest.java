@@ -1,9 +1,9 @@
 package id.xtramile.flexretry.integration;
 
 import id.xtramile.flexretry.Retry;
-import id.xtramile.flexretry.RetryException;
 import id.xtramile.flexretry.RetryOutcome;
 import id.xtramile.flexretry.config.RetryConfig;
+import id.xtramile.flexretry.exception.RetryException;
 import id.xtramile.flexretry.strategy.policy.ExceptionMappingPolicy;
 import org.junit.jupiter.api.Test;
 

@@ -1,13 +1,13 @@
 package id.xtramile.flexretry.integration;
 
 import id.xtramile.flexretry.Retry;
-import id.xtramile.flexretry.RetryException;
+import id.xtramile.flexretry.exception.RetryException;
 import id.xtramile.flexretry.strategy.policy.RetryWindow;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.Callable;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
  * Integration tests for window policy

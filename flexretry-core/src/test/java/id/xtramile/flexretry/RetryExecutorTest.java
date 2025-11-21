@@ -1,5 +1,6 @@
 package id.xtramile.flexretry;
 
+import id.xtramile.flexretry.exception.RetryException;
 import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
 import id.xtramile.flexretry.strategy.backoff.BackoffRouter;
 import id.xtramile.flexretry.strategy.backoff.BackoffStrategy;

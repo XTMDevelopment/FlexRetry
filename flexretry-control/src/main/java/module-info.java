@@ -1,5 +1,8 @@
 module id.xtramile.flexretry.control {
+    // Dependencies
     requires transitive id.xtramile.flexretry.core;
+
+    // Public API exports
     exports id.xtramile.flexretry.control;
     exports id.xtramile.flexretry.control.batch;
     exports id.xtramile.flexretry.control.breaker;

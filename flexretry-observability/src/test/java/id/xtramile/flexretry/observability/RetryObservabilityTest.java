@@ -2,7 +2,7 @@ package id.xtramile.flexretry.observability;
 
 import id.xtramile.flexretry.Retry;
 import id.xtramile.flexretry.RetryContext;
-import id.xtramile.flexretry.RetryException;
+import id.xtramile.flexretry.exception.RetryException;
 import id.xtramile.flexretry.observability.events.*;
 import id.xtramile.flexretry.observability.metrics.CompositeRetryMetrics;
 import id.xtramile.flexretry.observability.metrics.RetryMetrics;

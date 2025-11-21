@@ -1,11 +1,11 @@
 package id.xtramile.flexretry.control.integration;
 
 import id.xtramile.flexretry.Retry;
-import id.xtramile.flexretry.RetryException;
 import id.xtramile.flexretry.control.RetryControls;
 import id.xtramile.flexretry.control.ratelimit.RateLimitExceededException;
 import id.xtramile.flexretry.control.ratelimit.RateLimiter;
 import id.xtramile.flexretry.control.ratelimit.TokenBucketRateLimiter;
+import id.xtramile.flexretry.exception.RetryException;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.atomic.AtomicInteger;

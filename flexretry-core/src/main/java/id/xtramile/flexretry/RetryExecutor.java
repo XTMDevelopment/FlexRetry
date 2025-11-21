@@ -1,5 +1,7 @@
 package id.xtramile.flexretry;
 
+import id.xtramile.flexretry.exception.AttemptTimeoutException;
+import id.xtramile.flexretry.exception.RetryException;
 import id.xtramile.flexretry.lifecycle.AttemptLifecycle;
 import id.xtramile.flexretry.strategy.backoff.BackoffRouter;
 import id.xtramile.flexretry.strategy.backoff.BackoffStrategy;
@@ -99,6 +101,10 @@ public final class RetryExecutor<T> {
     }
 
     private static Throwable unwrap(Throwable throwable) {
+        if (throwable instanceof AttemptTimeoutException) {
+            return throwable;
+        }
+        
         if (throwable instanceof RuntimeException && throwable.getCause() != null) {
             Throwable cause = throwable.getCause();
 
@@ -180,7 +186,11 @@ public final class RetryExecutor<T> {
                     lastError = unwrap(e);
                     afterAttemptFailure(ctxBefore, lastError);
 
-                    if (policy.shouldRetry(null, lastError, attempt, maxAttempts)) {
+                    boolean isTimeout = lastError instanceof AttemptTimeoutException ||
+                            (lastError instanceof RuntimeException &&
+                                    lastError.getCause() instanceof TimeoutException);
+
+                    if (!isTimeout && policy.shouldRetry(null, lastError, attempt, maxAttempts)) {
                         sleepAdjusted(nextDelay, ctxBefore);
                         continue;
                     }
@@ -288,9 +298,10 @@ public final class RetryExecutor<T> {
 
         try {
             return future.get(perAttempt.toMillis(), TimeUnit.MILLISECONDS);
+
         } catch (TimeoutException te) {
             future.cancel(true);
-            throw new RuntimeException("Attempt timed out after " + perAttempt.toMillis() + "ms", te);
+            throw new AttemptTimeoutException("Attempt timed out after " + perAttempt.toMillis() + "ms", te);
         }
     }
 
