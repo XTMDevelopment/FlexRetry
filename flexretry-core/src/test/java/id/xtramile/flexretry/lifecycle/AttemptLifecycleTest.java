@@ -2,6 +2,7 @@ package id.xtramile.flexretry.lifecycle;
 
 import id.xtramile.flexretry.Retry;
 import id.xtramile.flexretry.RetryContext;
+import id.xtramile.flexretry.exception.RetryException;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -256,7 +257,7 @@ class AttemptLifecycleTest {
             }
         };
 
-        assertThrows(id.xtramile.flexretry.RetryException.class,
+        assertThrows(RetryException.class,
                 () -> Retry.<String>newBuilder()
                     .maxAttempts(3)
                     .retryOn(RuntimeException.class)
@@ -358,7 +359,7 @@ class AttemptLifecycleTest {
             // beforeAttempt and afterSuccess use default noop implementations
         };
 
-        assertThrows(id.xtramile.flexretry.RetryException.class,
+        assertThrows(RetryException.class,
                 () -> Retry.<String>newBuilder()
                     .maxAttempts(2)
                     .retryOn(RuntimeException.class)

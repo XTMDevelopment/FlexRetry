@@ -1,12 +1,12 @@
 package id.xtramile.flexretry.control.integration;
 
 import id.xtramile.flexretry.Retry;
-import id.xtramile.flexretry.RetryException;
 import id.xtramile.flexretry.control.RetryControls;
 import id.xtramile.flexretry.control.health.HealthProbe;
 import id.xtramile.flexretry.control.tuning.DynamicTuning;
 import id.xtramile.flexretry.control.tuning.MutableTuning;
 import id.xtramile.flexretry.control.tuning.RetrySwitch;
+import id.xtramile.flexretry.exception.RetryException;
 import id.xtramile.flexretry.strategy.backoff.BackoffStrategy;
 import org.junit.jupiter.api.Test;
 

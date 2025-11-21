@@ -1,11 +1,11 @@
 package id.xtramile.flexretry.control.integration;
 
 import id.xtramile.flexretry.Retry;
-import id.xtramile.flexretry.RetryException;
 import id.xtramile.flexretry.control.RetryControls;
 import id.xtramile.flexretry.control.breaker.CircuitBreaker;
 import id.xtramile.flexretry.control.breaker.CircuitOpenException;
 import id.xtramile.flexretry.control.breaker.FailureAccrualPolicy;
+import id.xtramile.flexretry.exception.RetryException;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -178,7 +178,7 @@ class CircuitBreakerIntegrationTest {
         breaker.onFailure();
         breaker.onFailure();
 
-        id.xtramile.flexretry.RetryException exception = assertThrows(RetryException.class,
+        RetryException exception = assertThrows(RetryException.class,
                 () -> Retry.<String>newBuilder()
                     .maxAttempts(5)
                     .execute(RetryControls.circuitBreak(breaker, () -> "success"))
@@ -208,7 +208,7 @@ class CircuitBreakerIntegrationTest {
         breaker.onFailure();
 
         // Circuit should be open
-        id.xtramile.flexretry.RetryException exception = assertThrows(RetryException.class,
+        RetryException exception = assertThrows(RetryException.class,
                 () -> Retry.<String>newBuilder()
                     .maxAttempts(3)
                     .execute(RetryControls.circuitBreak(breaker, () -> "success2"))

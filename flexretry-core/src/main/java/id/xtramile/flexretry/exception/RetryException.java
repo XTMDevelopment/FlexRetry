@@ -1,4 +1,4 @@
-package id.xtramile.flexretry;
+package id.xtramile.flexretry.exception;
 
 /**
  * Thrown when retries are exhausted or result never meets success criteria

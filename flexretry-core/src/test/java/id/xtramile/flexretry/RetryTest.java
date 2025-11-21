@@ -2,6 +2,7 @@ package id.xtramile.flexretry;
 
 import id.xtramile.flexretry.config.RetryConfig;
 import id.xtramile.flexretry.config.RetryTemplate;
+import id.xtramile.flexretry.exception.RetryException;
 import id.xtramile.flexretry.strategy.backoff.BackoffStrategy;
 import id.xtramile.flexretry.strategy.backoff.FixedBackoff;
 import id.xtramile.flexretry.strategy.policy.ClassifierPolicy;

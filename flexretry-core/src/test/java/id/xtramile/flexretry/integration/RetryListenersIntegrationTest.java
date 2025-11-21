@@ -1,7 +1,7 @@
 package id.xtramile.flexretry.integration;
 
 import id.xtramile.flexretry.Retry;
-import id.xtramile.flexretry.RetryException;
+import id.xtramile.flexretry.exception.RetryException;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.Callable;
